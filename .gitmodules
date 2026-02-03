@@ -1,0 +1,3 @@
+[submodule "external/upstream"]
+	path = external/upstream
+	url = https://github.com/FINNGEN/phenotype-matching
