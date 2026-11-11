@@ -1,0 +1,46 @@
+{
+ "n_train": 215872,
+ "n_diseases": 30,
+ "diseases_per_person": {
+  "mean": 2.5088107767565964,
+  "median": 2.0,
+  "p90": 7.0,
+  "p99": 12.0,
+  "share_none": 0.31807737918766676,
+  "share_one": 0.1729728728135191,
+  "share_five_or_more": 0.2019113178179662
+ },
+ "sum_of_prevalences": 2.5088107767565964,
+ "label_information_4pi(1-pi)_summed": 8.85371285388239,
+ "omega": {
+  "mean": 1.0,
+  "none_of_the_30": 0.5478876702298069,
+  "min": 0.5478876702298069,
+  "p50": 0.8048482642630026,
+  "p90": 1.77408482181028,
+  "p99": 3.1039046157812,
+  "mean_of_top_1pct": 3.587824233847992
+ },
+ "effective_sample_share_with_correction": 0.7996012270906322,
+ "class_weight_sqrt_max": 5.0679194122780675,
+ "class_weight_parity_max": 25.68380716934487,
+ "rarest": {
+  "label": "I21",
+  "prevalence": 0.03747591165134895,
+  "case_share_over_rotation": 0.07826772407978215
+ },
+ "commonest": {
+  "label": "I10",
+  "prevalence": 0.3164328861547584,
+  "case_share_over_rotation": 0.4476043946319367
+ },
+ "median_prevalence": 0.06690770456566855,
+ "median_case_share_over_rotation": 0.11312742522392147,
+ "batches_one_rotation": 30,
+ "n_by_group": {
+  "train": 215872,
+  "val": 20000,
+  "test": 40000,
+  "wb_related": 57445
+ }
+}
