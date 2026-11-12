@@ -75,7 +75,10 @@ def test_every_arm_changes_one_thing_and_shares_the_rest():
         cmd = run_pilot.command(arm, 2, a)
         assert cmd[0] == run_pilot.PY[env]
         # the same command as the default but for the run's name, followed by the arm's own flags
-        assert cmd[1:len(ref)] == [x.replace("default_s2", f"{arm}_s2") for x in ref[1:]]
+        expect = [x.replace("default_s2", f"{arm}_s2") for x in ref[1:]]
+        if arm in run_pilot.ARM_DATASET:                                       # same settings on its own dataset variant
+            expect[expect.index("--rd_mode") + 1] = run_pilot.ARM_DATASET[arm]
+        assert cmd[1:len(ref)] == expect
         assert cmd[len(ref):] == extra
     assert set(run_pilot.ARMS) == set(ap.ARMS)
 
@@ -120,3 +123,15 @@ def test_simulated_traits_have_the_stated_architecture():
     # an AUROC of about 0.77 at a heritability of 0.3 and 0.84 at 0.5
     au = [sc.auroc(g[:, j], y[:, j]) for j in range(3)]
     assert 0.75 < au[0] < 0.80 and 0.82 < au[1] < 0.86 and 0.82 < au[2] < 0.86
+
+
+def test_residualising_removes_what_the_covariates_explain():
+    import numpy as np
+
+    import gwas_annotation as ga
+    rng = np.random.default_rng(0)
+    cov = rng.normal(size=(5000, 3))
+    y = np.column_stack([cov @ [1.0, -2.0, 0.5] + rng.normal(size=5000), rng.normal(size=5000)])
+    r = ga.residualise(y, cov)
+    assert np.allclose(r.std(axis=0), 1.0) and np.abs(r.mean(axis=0)).max() < 1e-9
+    assert np.abs(np.corrcoef(np.column_stack([r, cov]).T)[:2, 2:]).max() < 1e-9   # nothing of the covariates is left

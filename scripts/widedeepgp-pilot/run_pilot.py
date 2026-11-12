@@ -43,6 +43,10 @@ ARMS = {
     "annot": ("fork", ["--annot"]),
     "mamba3": ("m3", ["--mixer", "mamba3"]),
 }
+# arms that read a variant of the dataset of their own (made by gwas_annotation.py)
+ARM_DATASET = {"gwas_annot": "hm3plus_proxy8_gwas", "gwasclump_annot": "hm3plus_proxy8_gwasclump"}
+ARMS["gwas_annot"] = ("fork", ["--annot"])
+ARMS["gwasclump_annot"] = ("fork", ["--annot"])
 COMMON = ["--label", "ard30", "--snp_stats", "train", "--final_pool", "atten",
           "--d_model", "32", "--e_layers", "1", "--n_heads", "4", "--batch_size", "16", "--accumulate", "4",
           "--lr", "7e-4", "--l2", "1e-4", "--dropout", "0.2", "--eval_batch_size", "128", "--num_workers", "4",
@@ -66,12 +70,12 @@ def command(arm, seed, a):
     env, extra = ARMS[arm]
     return [PY[env], "main_multilabel.py", "--data_dir", a.data, "--run_dir", a.runs, "--experiment", a.experiment,
             "--exp_name", f"{arm}_s{seed}", "--seed", str(seed), "--max_epoch_equiv", str(a.epoch_equiv),
-            "--rd_mode", a.rd_mode, *COMMON, *extra]
+            "--rd_mode", ARM_DATASET.get(arm, a.rd_mode), *COMMON, *extra]
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--arms", nargs="+", default=list(ARMS), choices=list(ARMS))
+    ap.add_argument("--arms", nargs="+", default=[a for a in ARMS if a not in ARM_DATASET], choices=list(ARMS))
     ap.add_argument("--seeds", nargs="+", type=int, default=[1, 2])
     ap.add_argument("--epoch-equiv", type=float, default=6.0, help="training budget per run, in epoch-equivalents")
     ap.add_argument("--experiment", default="pilot")

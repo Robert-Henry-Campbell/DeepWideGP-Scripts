@@ -128,10 +128,34 @@ is trained, to locate the obstacle:
   participants. Through the annotation gain the network can then weight each SNP's dosage by
   the size and sign of its association, which is the per-SNP information a network with shared
   weights does not otherwise have.
+- **Clumped association statistics as annotation.** As the previous run, but each trait's
+  channel keeps the *z*-score only at that trait's clumped lead SNPs and is zero elsewhere:
+  the weights of a clumped polygenic score, given to the network as annotation.
 - **Longer training.** The run on GWAS-selected SNPs continued from 6 to 30 epoch-equivalents.
 - **Other optimisation settings.** A ten-trial Optuna search (learning rate, weight decay,
   dropout, accumulation, warm-up; four epoch-equivalents per trial, successive halving) on the
   GWAS-selected SNPs, with the mean AUROC of the five traits as objective.
+
+## Association statistics as annotation on the real labels (`gwas_annotation.py`)
+
+Added after the positive control, in which the network learned from the SNPs once each SNP came
+with a signed association statistic. The same input was built for the 30 diseases without
+letting any participant inform their own annotation:
+
+- **GWAS sample.** The 165,872 participants of the full training split that are in none of
+  the proxy's tables. They share no participant with the proxy's training or tuning
+  participants or with the test set.
+- **Statistics.** For every proxy SNP and disease, the *z*-score of the SNP in a linear
+  regression of case status on the standardised dosage, after year of birth, sex and the ten
+  principal components had been regressed out of case status.
+- **Arm.** The default configuration with these 30 *z*-scores per SNP as its annotation
+  vectors (in place of the functional annotations), trained on the proxy as every other arm.
+- **Yardstick.** What a linear method draws from the same statistics: for each disease a
+  clumped polygenic score (lead SNPs with *p* < 10⁻³; SNPs with *r*² > 0.1 within 500 SNPs of
+  a stronger lead removed, linkage disequilibrium from the proxy's training participants;
+  *p*-value threshold chosen on the proxy's third table), added to the 12 covariates in a
+  logistic model fitted on the proxy's training participants and scored on its tuning
+  participants.
 
 ## Decision rules, fixed before the pilot
 
@@ -198,6 +222,8 @@ a second environment for Mamba-3.
     python scripts/widedeepgp-pilot/simulated_control.py oracle    # then train with --rd_mode hm3plus_proxy8_sim_oracle --annot
     python scripts/widedeepgp-pilot/simulated_control.py gwas      # then train with --rd_mode hm3plus_proxy8_sim_gwas --annot
     python scripts/widedeepgp-pilot/simulated_control.py summarise
+    python scripts/widedeepgp-pilot/gwas_annotation.py             # z-scores of the 30 diseases as annotation
+    python scripts/widedeepgp-pilot/run_pilot.py --arms gwas_annot
     python scripts/widedeepgp-pilot/analyze_pilot.py        # tables and figures in results/
 
 ## Limitations

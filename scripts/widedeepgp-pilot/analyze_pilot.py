@@ -52,6 +52,9 @@ ARMS = {  # arm -> (short label, what differs from the default)
     "bf16": ("bf16 encoders", "encoders in bf16; pooling, head and loss in 32-bit"),
     "annot": ("Annotation vectors", "96 functional annotations per SNP as a gain and offset on its token"),
     "mamba3": ("Mamba-3 block", "Mamba-3 in a bidirectional wrapper instead of the bidirectional Mamba block"),
+    "gwas_annot": ("GWAS statistics as annotation", "30 annotation channels: each SNP's association z-score for each disease, "
+                                                     "from training participants outside the proxy"),
+    "gwasclump_annot": ("Clumped GWAS statistics as annotation", "the same z-scores, kept only at each disease's clumped lead SNPs"),
 }
 SHORT = {"I10": "Hypertension", "E78": "Lipid disorders", "K57": "Diverticular disease", "K21": "Reflux disease",
          "K29": "Gastritis and duodenitis", "K44": "Diaphragmatic hernia", "I25": "Chronic ischaemic heart disease",
@@ -187,6 +190,24 @@ def disease_table(runs, cov):
     return pd.DataFrame(out)
 
 
+def markdown_table(rt, at, gs):
+    """The arm table of results.md, one row per arm with its seeds side by side."""
+    lines = ["| Arm | Best mean tuning AUROC, by seed | Mean | Cross-entropy | Genotype-dependent part, by seed (95% interval) "
+             "| Minutes per epoch-equivalent | Peak GPU memory (GiB) |", "|---|---|---|---|---|---|---|"]
+    for r in at.itertuples():
+        v = rt[rt.arm == r.arm].sort_values("seed")
+        seeds = "; ".join(f"{x:.4f}" for x in v.best_auroc_mean)
+        part = "–"
+        if gs is not None and (gs.arm == r.arm).any():
+            g = gs[gs.arm == r.arm].sort_values("seed")
+            part = "; ".join(f"{x.genetic_part:+.4f} ({x.ci_low:+.4f} to {x.ci_high:+.4f})" for x in g.itertuples())
+        lines.append(f"| {r.label} | {seeds} | {r.best_auroc_mean:.4f} | {r.best_bce_mean:.4f} | {part} | "
+                     f"{r.train_minutes_per_epoch_equiv:.1f} | {r.gpu_peak_train_gib:.1f} |")
+    lines.append(f"| *Covariates only (logistic model)* | | {at.covariates_only_auroc_mean.iloc[0]:.4f} | "
+                 f"{at.covariates_only_bce_mean.iloc[0]:.4f} | | | |")
+    return "\n".join(lines) + "\n"
+
+
 def capacity_table(trials, n_train=215_872):
     """Per configuration: the largest batch that fits on one GPU, memory per participant (slope
     of peak memory on batch size over the trials that fitted) and speed at the largest batch."""
@@ -289,7 +310,7 @@ def fig_arms(rt, at, cov_mean):
     lo_, hi_ = rt.best_auroc_mean.min(), rt.best_auroc_mean.max()
     if lo_ - 0.5 * (hi_ - lo_) - 0.002 <= cov_mean <= hi_ + 0.5 * (hi_ - lo_) + 0.002:   # drawn when it is near the arms
         ax.axvline(cov_mean, color=MUTED, lw=0.8, ls=(0, (3, 2)), zorder=1)
-        ax.text(cov_mean, -0.75, "covariates only", color=INK2, fontsize=7, ha="center", va="bottom")
+        ax.text(cov_mean, -0.75, "covariates only", color=INK2, fontsize=7, ha="right", va="bottom")
     for i, arm in enumerate(arms):
         v = rt[rt.arm == arm].best_auroc_mean
         ax.plot(v, [i] * len(v), "o", color=BLUE, ms=4.5, mec="white", mew=0.7, zorder=3)
@@ -340,27 +361,37 @@ between the dots is not an estimate of what the full model adds. Data: `fig3_dis
 
 def fig_genetic(gs):
     arms = [a for a in ARMS if a in set(gs.arm)]
-    fig, ax = plt.subplots(figsize=(89 * MM, (14 + 7.5 * len(arms)) * MM), constrained_layout=True)
+    fig, ax = plt.subplots(figsize=(89 * MM, (16 + 7.5 * len(arms)) * MM), constrained_layout=True)
     ax.axvline(0, color=INK2, lw=0.8, zorder=1)
+    ref = RES / "gwas_annotation_reference.csv"
+    linear = float(pd.read_csv(ref).gain_from_prs.mean()) if ref.exists() else None
+    if linear is not None:                              # what a linear score adds, for scale
+        ax.axvline(1e3 * linear, color=MUTED, lw=0.8, ls=(0, (3, 2)), zorder=1)
+        ax.text(1e3 * linear, -0.8, "clumped polygenic score", color=INK2, fontsize=7, ha="right", va="bottom")
     for i, arm in enumerate(arms):
         v = gs[gs.arm == arm].sort_values("seed")
         for k, r in enumerate(v.itertuples()):
             yk = i + (k - (len(v) - 1) / 2) * 0.3
-            ax.plot([r.ci_low, r.ci_high], [yk, yk], color=AXIS, lw=1.2, zorder=2, solid_capstyle="round")
-            ax.plot(r.genetic_part, yk, "o", color=BLUE, ms=4.5, mec="white", mew=0.7, zorder=3)
+            ax.plot([1e3 * r.ci_low, 1e3 * r.ci_high], [yk, yk], color=AXIS, lw=1.2, zorder=2, solid_capstyle="round")
+            ax.plot(1e3 * r.genetic_part, yk, "o", color=BLUE, ms=4.5, mec="white", mew=0.7, zorder=3)
     ax.set_yticks(range(len(arms)))
     ax.set_yticklabels([ARMS[a][0] for a in arms])
-    ax.invert_yaxis()
+    ax.set_ylim(len(arms) - 0.4, -0.9)
     ax.grid(axis="y", visible=False)
-    ax.set_xlabel("AUROC lost when genotypes are permuted\n(mean over 30 diseases)")
+    ax.set_xlabel("AUROC lost when genotypes are permuted\n(thousandths; mean over 30 diseases)")
     legend = """
 **Figure 4. The part of each model's tuning AUROC that depends on the genotypes.** For every run
 the best checkpoint was scored on the 10,000 tuning participants as they are and again after
 giving each participant another participant's genotypes (three permutations), keeping
 covariates and labels in place. Dots show the resulting loss of AUROC, averaged over the 30
-diseases, for each of an arm's two seeds; bars are 95% bootstrap intervals over participants. A
-model that takes nothing from the SNPs sits at zero. Data: `fig4_genetic_data.csv`.
+diseases, in thousandths of an AUROC unit, for each seed of an arm; bars are 95% bootstrap
+intervals over participants. A model that takes nothing from the SNPs sits at zero.
 """
+    if linear is not None:
+        legend += f"""The dashed line is what a clumped polygenic score built from 165,872 other participants adds to
+the covariates on the same tuning participants ({1e3 * linear:.1f} thousandths).
+"""
+    legend += "Data: `fig4_genetic_data.csv`.\n"
     save(fig, "fig4_genetic", gs, legend)
 
 
@@ -391,6 +422,8 @@ def main(argv=None):
     at.to_csv(RES / "pilot_arms.csv", index=False, float_format="%.6g")
     et.to_csv(RES / "pilot_equal_time.csv", index=False, float_format="%.6g")
     dt.to_csv(RES / "pilot_per_disease.csv", index=False, float_format="%.6g")
+    with open(RES / "pilot_table.md", "w") as f:
+        f.write(markdown_table(rt, at, gs))
     trials = RES / "capacity_trials.csv"
     if trials.exists():
         cap = capacity_table(pd.read_csv(trials))

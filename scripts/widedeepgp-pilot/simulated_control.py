@@ -370,32 +370,117 @@ def gwas(a):
     traits = [str(t) for t in gw["traits"]]
     out = _with_annotation(a, "_gwas", "annotations_gwas.npz", gw["z"].astype(np.float32), [f"z_{t}" for t in traits])
     print(f"wrote {out}: z-scores of {gw['z'].shape[0]} SNPs for {len(traits)} traits; |z| up to {np.abs(gw['z']).max():.1f}")
+    # the same statistics after clumping: a trait's channel is its z-score at its clumped lead SNPs
+    # (p < 1e-3; SNPs in LD with a stronger lead removed) and zero elsewhere, i.e. the weights of
+    # a clumped polygenic score
+    clumped = np.zeros_like(gw["z"], dtype=np.float32)
+    for j, t in enumerate(traits):
+        lead = gw[f"leads_{t}"]
+        clumped[lead, j] = gw["z"][lead, j]
+    out = _with_annotation(a, "_gwasclump", "annotations_gwasclump.npz", clumped, [f"clumped_z_{t}" for t in traits])
+    print(f"wrote {out}: clumped z-scores, {int((clumped != 0).sum())} non-zero entries")
+
+
+# what each run of the control gave the network: run name -> (label, description)
+VARIANTS = {
+    "default": ("All SNPs", "all 157,279 SNPs, default configuration"),
+    "mamba3": ("All SNPs, Mamba-3 block", "all SNPs, Mamba-3 in a bidirectional wrapper"),
+    "annot": ("All SNPs + functional annotations", "all SNPs with the 96 functional annotations"),
+    "oracle": ("All SNPs + causal SNPs marked", "all SNPs with an annotation channel per trait marking its causal SNPs"),
+    "gwas_annot": ("All SNPs + association z-scores", "all SNPs with each SNP's signed z-score per trait as annotation"),
+    "gwasclump_annot": ("All SNPs + clumped z-scores", "all SNPs with z-scores kept at each trait's clumped lead SNPs only"),
+    "selected": ("GWAS-selected SNPs", "the 2,476 clumped lead SNPs only"),
+    "selected_long": ("GWAS-selected SNPs, trained longer", "the same, continued to 30 epoch-equivalents"),
+}
 
 
 def summarise(a):
     ref = pd.read_csv(RES / "simulated_control_references.csv").set_index("trait")
     rows = []
     for d in sorted((Path(a.runs) / a.experiment).iterdir()):
-        if not (d / "results.json").exists():
+        if not (d / "metrics.csv").exists() or "_s" not in d.name:
             continue
-        r = json.load(open(d / "results.json"))
         arm, seed = d.name.rsplit("_s", 1)
         m = pd.read_csv(d / "metrics.csv")
-        for trait, v in r["val"].items():
+        if m.empty:
+            continue
+        done = (d / "results.json").exists()
+        for trait in ref.index:
             c = m[(m.label == trait) & (m.metric == "auroc")]
-            rows.append(dict(arm=arm, seed=int(seed), trait=trait, auroc_at_best_checkpoint=v["auroc"],
-                             auroc_best_of_run=float(c.value.max()), auroc_last=float(c.value.iloc[-1]),
+            rows.append(dict(arm=arm, seed=int(seed), trait=trait, finished=done,
+                             epoch_equivalents=float(c.epoch_equiv.max()), auroc_last=float(c.value.iloc[-1]),
+                             auroc_best_of_run=float(c.value.max()),
+                             auroc_at_6_epoch_equivalents=float(c[c.epoch_equiv <= 6.02].value.iloc[-1]),
                              ceiling=ref.loc[trait, "ceiling_auroc_tune"], prs=ref.loc[trait, "prs_auroc_tune"],
-                             clumped_prs=ref.loc[trait, "clumped_auroc_tune"],
-                             gblup=ref.loc[trait, "gblup_auroc_tune"], epoch_equivalents=r["epoch_equivalents"],
-                             train_minutes=r["train_seconds"] / 60.0))
+                             clumped_prs=ref.loc[trait, "clumped_auroc_tune"], gblup=ref.loc[trait, "gblup_auroc_tune"]))
     out = pd.DataFrame(rows)
     out.to_csv(RES / "simulated_control_runs.csv", index=False, float_format="%.6g")
     pd.set_option("display.width", 250)
     if len(out):
-        print(out.pivot_table(index="trait", columns=["arm", "seed"], values="auroc_best_of_run").round(4).to_string())
+        print(out.pivot_table(index="arm", columns="trait", values="auroc_last").round(4).to_string())
+        figure(out, ref)
     print(ref[["causal_snps", "heritability", "ceiling_auroc_tune", "prs_auroc_tune", "clumped_auroc_tune",
                "gblup_auroc_tune"]].round(4).to_string())
+
+
+def figure(out, ref):
+    """One panel per trait: the AUROC each variant of the input reached, against the ceiling and
+    the better of the two linear methods."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    mm, blue = 1 / 25.4, "#2a78d6"
+    ink, ink2, muted, grid, axis = "#0b0b0b", "#52514e", "#898781", "#e1e0d9", "#c3c2b7"
+    plt.rcParams.update({"font.family": "sans-serif", "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans"],
+                         "font.size": 7, "axes.labelsize": 7, "axes.titlesize": 7, "xtick.labelsize": 7, "ytick.labelsize": 7,
+                         "axes.linewidth": 0.6, "axes.edgecolor": axis, "axes.labelcolor": ink2, "xtick.color": ink2,
+                         "ytick.color": ink2, "text.color": ink, "xtick.major.width": 0.6, "ytick.major.width": 0.6,
+                         "xtick.major.size": 2.5, "ytick.major.size": 0, "axes.spines.top": False, "axes.spines.right": False,
+                         "axes.grid": True, "grid.color": grid, "grid.linewidth": 0.5, "axes.axisbelow": True,
+                         "pdf.fonttype": 42, "savefig.dpi": 450, "figure.dpi": 150})
+    arms = [v for v in VARIANTS if v in set(out.arm)]
+    traits = list(ref.index)
+    title = {t: f"{int(ref.loc[t, 'causal_snps']):,} causal" + (" (enriched)" if ref.loc[t, "enrichment"] > 1 else " SNPs")
+             for t in traits}
+    height = 24 + 6.2 * len(arms)
+    fig, axes = plt.subplots(1, len(traits), figsize=(183 * mm, height * mm), sharey=True, sharex=True)
+    fig.subplots_adjust(left=0.245, right=0.985, top=1 - 6 / height, bottom=17 / height, wspace=0.12)
+    for ax, t in zip(axes, traits):
+        best_linear = max(ref.loc[t, "clumped_auroc_tune"], ref.loc[t, "gblup_auroc_tune"])
+        ax.axvline(0.5, color=axis, lw=0.8)
+        ax.axvline(best_linear, color=ink2, lw=0.9, ls=(0, (3, 2)))
+        ax.axvline(ref.loc[t, "ceiling_auroc_tune"], color=ink, lw=0.9)
+        for i, arm in enumerate(arms):
+            v = out[(out.arm == arm) & (out.trait == t)]
+            ax.plot(v.auroc_last, [i] * len(v), "o", color=blue, ms=4.6, mec="white", mew=0.7, zorder=3)
+        ax.set_title(title[t], color=ink, loc="left", pad=3)
+        ax.set_xlim(0.47, 0.9)
+        ax.set_xticks([0.5, 0.6, 0.7, 0.8])
+        ax.set_ylim(len(arms) - 0.4, -0.6)
+        ax.grid(axis="y", visible=False)
+    axes[0].set_yticks(range(len(arms)))
+    axes[0].set_yticklabels([VARIANTS[v][0] for v in arms])
+    axes[len(traits) // 2].set_xlabel("Tuning AUROC")
+    handles = [plt.Line2D([], [], marker="o", ls="", color=blue, ms=4.6, mec="white", mew=0.7, label="the network"),
+               plt.Line2D([], [], color=ink2, lw=0.9, ls=(0, (3, 2)), label="best linear method (clumped score or GBLUP)"),
+               plt.Line2D([], [], color=ink, lw=0.9, label="ceiling (true genetic value)")]
+    fig.legend(handles=handles, loc="lower center", bbox_to_anchor=(0.5, 0.0), ncol=3, frameon=False, fontsize=7)
+    RES.mkdir(exist_ok=True)
+    fig.savefig(RES / "fig5_control.png")
+    fig.savefig(RES / "fig5_control.pdf")
+    plt.close(fig)
+    out.to_csv(RES / "fig5_control_data.csv", index=False, float_format="%.6g")
+    with open(RES / "fig5_control_legend.md", "w") as f:
+        f.write("""**Figure 5. Positive control: traits simulated on the real genotypes.** Each panel is one
+simulated trait (prevalence 20%; heritability of liability 0.3 for the trait with 20 causal SNPs
+and 0.5 for the others; "enriched" means its causal SNPs were drawn 20 times more often from
+coding or conserved SNPs). Dots show the tuning AUROC of the network at the end of training for
+each version of its input (rows); training was 6 epoch-equivalents of the 40,000 training
+participants, and 30 for the row "trained longer". The dashed line is the better of two linear methods
+fitted to the same training participants (a clumped polygenic score and GBLUP), and the solid
+line is the AUROC of the true genetic value, which no method can exceed. An AUROC of 0.5 is
+chance. Data: `fig5_control_data.csv`.
+""")
 
 
 def main(argv=None):
