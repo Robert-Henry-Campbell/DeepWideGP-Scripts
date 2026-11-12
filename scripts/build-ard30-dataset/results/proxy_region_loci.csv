@@ -1,0 +1,21 @@
+locus,chromosome,position_mb_grch37_approx,eighth_by_snp_index,disease_area
+9p21 (CDKN2B-AS1),9,22.1,2,coronary disease
+HLA,6,31.0,2,immune-mediated (e.g. hypothyroidism)
+LDLR,19,11.2,2,lipids
+PCSK9,1,55.5,2,lipids
+UMOD,16,20.36,3,kidney function
+TCF7L2,10,114.76,7,type 2 diabetes
+APOE,19,45.41,6,lipids
+LPA,6,161.0,8,coronary disease
+FTO,16,53.8,4,obesity
+SORT1,1,109.8,4,lipids
+PITX2 (4q25),4,111.7,5,atrial fibrillation
+ZFHX3,16,73.05,6,atrial fibrillation
+ABO,9,136.15,8,cardiovascular
+APOB,2,21.26,1,lipids
+GCKR,2,27.73,2,lipids and glucose
+MC4R,18,57.85,6,obesity
+GDF5,20,34.0,5,osteoarthritis
+HNF1B,17,36.1,4,type 2 diabetes
+KCNQ1,11,2.85,1,type 2 diabetes
+SLC2A9,4,9.9,1,urate

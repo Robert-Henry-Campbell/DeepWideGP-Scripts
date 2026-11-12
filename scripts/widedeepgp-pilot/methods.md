@@ -25,8 +25,12 @@ the full dataset's size (`run_capacity.py`), and a dry run of the full dataset.
 The proxy dataset of `build-ard30-dataset` (`hm3plus_proxy8`): the 30 phenotypes and 12
 covariates of the full dataset, 157,279 SNPs (the second eighth of every chromosome, as
 contiguous stretches), 40,000 training participants and 10,000 tuning participants, all from
-the unrelated White-British modelling population. It contains no test participant. Training
-time is proportional to participants times SNPs, so one pass over the proxy's training
+the unrelated White-British modelling population. It contains no test participant: its third
+table, used below to choose thresholds, is a further 10,000 participants drawn from the full
+training split, as its `proxy_log.json` records. A check of the participant lists found the
+three tables disjoint, none of their participants in the real test set, and the GWAS sample of
+`gwas_annotation.py` disjoint from all of them and from the full tuning and test splits.
+Training time is proportional to participants times SNPs, so one pass over the proxy's training
 participants costs about a fortieth of one pass over the full training split.
 
 ## Arms
@@ -63,7 +67,8 @@ batches. Runs were executed one per GPU (NVIDIA RTX 6000 Ada, 48 GB).
   Mamba-3) are also compared at the GPU time that both had reached, using the best mean AUROC
   each had attained by then.
 - **Covariates-only baseline:** a logistic model per disease on the 12 covariates, fitted on the
-  proxy's training participants, gives the AUROC that needs no genotype.
+  proxy's training participants, gives the AUROC that needs no genotype. Every run and arm is
+  also given as its gain over this model (`results/pilot_runs.csv`, `results/pilot_arms.csv`).
 - Per-disease AUROCs, cross-entropy on the population scale, training time and peak GPU memory
   are tabulated for every run.
 
@@ -80,11 +85,11 @@ loss over the 30 diseases.
 
 ## Positive control: simulated traits on the real genotypes (`simulated_control.py`)
 
-Added during the pilot, after the read-out above showed that no arm had learned anything from
-the genotypes on the real labels. That result has two possible readings: the proxy holds too
-little genetic signal for any method to find, or the network cannot find signal that is there.
-To separate them, five traits were simulated on the proxy's genotypes, so that the signal is
-present by construction and its size is known:
+Added during the pilot, after the read-out above showed that no arm had learned anything
+detectable from the genotypes on the real labels. That result has two possible readings: the
+proxy holds too little genetic signal for any method to find, or the network cannot find signal
+that is there. To separate them, five traits were simulated on the proxy's genotypes, so that
+the signal is present by construction and its size is known:
 
 | Trait | Causal SNPs | Heritability of liability | Causal SNPs drawn |
 |---|---|---|---|
@@ -129,12 +134,32 @@ is trained, to locate the obstacle:
   the size and sign of its association, which is the per-SNP information a network with shared
   weights does not otherwise have.
 - **Clumped association statistics as annotation.** As the previous run, but each trait's
-  channel keeps the *z*-score only at that trait's clumped lead SNPs and is zero elsewhere:
-  the weights of a clumped polygenic score, given to the network as annotation.
-- **Longer training.** The run on GWAS-selected SNPs continued from 6 to 30 epoch-equivalents.
-- **Other optimisation settings.** A ten-trial Optuna search (learning rate, weight decay,
-  dropout, accumulation, warm-up; four epoch-equivalents per trial, successive halving) on the
-  GWAS-selected SNPs, with the mean AUROC of the five traits as objective.
+  channel keeps the *z*-score only at that trait's clumped lead SNPs (all of them with
+  *p* < 10⁻³, 243 to 660 per trait) and is zero elsewhere: the candidate weights of a clumped
+  polygenic score, given to the network as annotation. The score itself keeps only the leads
+  beyond a threshold chosen on the third table (55 to 660 SNPs).
+- **Longer training.** The run on GWAS-selected SNPs continued from 6 to 30 epoch-equivalents:
+  its folder was copied (`pilot_sim/selected_s1` to `pilot_sim/selected_long_s1`) and the copy
+  resumed from its last checkpoint with a limit of 30. Its `checkpoints/` folder therefore still
+  holds the copied run's `best.ckpt` and `last.ckpt` (both from the end of the first 6
+  epoch-equivalents) beside the continued run's `best-v1.ckpt` and `last-v1.ckpt`. Its
+  `results.json` names the right files, and `genetic_signal.py` and `score_snapshots.py`
+  (`--snapshots best`) follow it, but a script that opens `checkpoints/best.ckpt` or
+  `checkpoints/last.ckpt` by name, or a `--resume` with the pilot's code (8f03ca6, which starts
+  from `last.ckpt`), would use the copied run's weights. The current code resumes such a folder
+  from `last-v1.ckpt`, and a run directory copied and resumed with it carries on in `best.ckpt`
+  and `last.ckpt` with the copied run's best score.
+- **Other optimisation settings.** An Optuna search of eleven trials (learning rate, weight
+  decay, dropout, accumulation, warm-up; four epoch-equivalents per trial, successive halving)
+  on the GWAS-selected SNPs, with the mean AUROC of the five traits as objective. Trial 0 was
+  stopped by hand after five validation passes, to free its GPU for `gwas_annotation.py`, and
+  is recorded as failed; the study then continued in a new worker on another GPU with sampler
+  seed 2 instead of 1, and that worker's log replaced the first one's. Of the other ten
+  trials, nine were pruned and one completed.
+
+Every run of the control is read at the end of its training (Figure 5 and the control table of
+`results.md`). The run continued to 30 epoch-equivalents is also given at its best validation
+pass; that pass is chosen on the tuning participants, so its AUROCs are optimistic.
 
 ## Association statistics as annotation on the real labels (`gwas_annotation.py`)
 
@@ -156,6 +181,10 @@ letting any participant inform their own annotation:
   *p*-value threshold chosen on the proxy's third table), added to the 12 covariates in a
   logistic model fitted on the proxy's training participants and scored on its tuning
   participants.
+- **Alignment of labels and genotypes.** The GWAS reads genotypes through the same map from
+  participant to genotype row as training does, so it also shows that the two are joined
+  correctly: its strongest associations lie at textbook loci, 9p21 for the coronary diseases,
+  *LDLR* for lipid disorders, *ABCG8* for gallstones and the MHC for hypothyroidism.
 
 ## Decision rules, fixed before the pilot
 
@@ -183,7 +212,8 @@ outputs. Before it entered the pilot it had to pass, in order:
    with finite outputs and gradients;
 4. capacity: largest batch, memory and speed at full length;
 5. the six-trait synthetic run of `DeepWideGP/scripts/multilabel_synthetic.sh`, held to the
-   same bands as the current block.
+   same bands as the current block (record:
+   `/mnt/sdg/robert/deepwidegp/runs/gate_evidence/multi6_mamba3_gate5`).
 
 ## Capacity (`run_capacity.py`, `capacity_probe.py`)
 
@@ -200,16 +230,41 @@ for about a minute as a result, which affects that run's timing slightly and not
 
 ## Dry run at full size
 
-Two hundred training steps at a batch of 18 on the full dataset (215,872 training
-participants, 1,258,200 SNPs), followed by one validation pass over the 20,000 tuning
-participants, to confirm memory, throughput and the cost of validation before a full-size run
-is committed to.
+Two hundred training steps at a batch of 18 on the full dataset (215,872 training participants,
+1,258,200 SNPs), followed by one validation pass over the 20,000 tuning participants, to confirm
+memory, throughput and the cost of validation before a full-size run is committed to
+(`/mnt/sdg/robert/deepwidegp/runs/dryrun/fp32_b18`). It was launched on 11 November at 22:50
+from the repository's working tree, and training began at 23:00, after the SNP statistics had
+been computed. That tree was committed at 23:09, in the commits ending at 8f03ca6, after four
+files the run had already loaded were edited: help texts in `args_generator.py`, Mamba-3's
+activation checkpointing in `widedeepgp/model.py`, and the steps at which training metrics are
+logged in `widedeepgp/callbacks.py` and `train.py`; none of these edits changes this
+configuration's training or what is compared below. It was repeated on 12 November with bf16
+encoders and otherwise the same settings (the same seed, 33, and so the same batches; a batch of
+18), from the export of 8f03ca6 described under Software
+(`/mnt/sdg/robert/deepwidegp/runs/dryrun/bf16_b18`), to check bf16 at the full sequence length,
+which the pilot's arms, at most 13,158 SNPs per chromosome, do not reach. The training loss
+(logged every 50 steps), the validation metrics, the step time and the peak memory of the two
+runs are compared. The two runs shared the machine with different other jobs, so the ratio of
+their step times is approximate; the capacity trials, each on a GPU of its own, measure it
+cleanly.
 
 ## Software
 
-`DeepWideGP` at branch `widening`; Python 3.10, PyTorch 2.10, PyTorch Lightning 2.0.8; the
-Vision-Mamba fork of `mamba_ssm` 1.1.1 for the current block and upstream `mamba_ssm` 2.3.2 in
-a second environment for Mamba-3.
+`DeepWideGP` at branch `widening`; every training run of the pilot's arms and of the control,
+and the bf16 repeat of the dry run (not the 32-bit dry run; see above), used an export of commit
+8f03ca6 (`/mnt/sdg/robert/deepwidegp/runs/pilot_code_8f03ca6`), so that later changes to the
+repository could not make runs differ. The scripts below load the model code from `DEEPGP_REPO`,
+which defaults to the live repository: set
+`export DEEPGP_REPO=/mnt/sdg/robert/deepwidegp/runs/pilot_code_8f03ca6` to rerun them on the
+code the runs used. Python 3.10, PyTorch 2.10, PyTorch Lightning 2.0.8; the Vision-Mamba fork of
+`mamba_ssm` 1.1.1 for the current block and upstream `mamba_ssm` 2.3.2 in a second environment
+for Mamba-3. `gwas_annotation.py` needs one GPU for a few minutes; it and `simulated_control.py`
+stop unless the dataset's third table is recorded as a draw from the training split, because
+they read that table without the test lock of the model repository. Two checks run on the CPU:
+`check_control_data_path.py` recomputes the control's ceilings through the model's loader, and
+`position_code_capacity.py` fits true effect profiles on the position code. Unit tests on
+made-up numbers: `test_pilot.py` and `test_pilot_checks.py`.
 
     python scripts/build-ard30-dataset/make_proxy_dataset.py
     python scripts/widedeepgp-pilot/run_pilot.py            # 16 runs, one per GPU
@@ -222,15 +277,50 @@ a second environment for Mamba-3.
     python scripts/widedeepgp-pilot/simulated_control.py oracle    # then train with --rd_mode hm3plus_proxy8_sim_oracle --annot
     python scripts/widedeepgp-pilot/simulated_control.py gwas      # then train with --rd_mode hm3plus_proxy8_sim_gwas --annot
     python scripts/widedeepgp-pilot/simulated_control.py summarise
+    python scripts/widedeepgp-pilot/check_control_data_path.py     # the control's ceilings through the loader (CPU)
+    python scripts/widedeepgp-pilot/position_code_capacity.py      # what the position code can represent (CPU)
     python scripts/widedeepgp-pilot/gwas_annotation.py             # z-scores of the 30 diseases as annotation
     python scripts/widedeepgp-pilot/run_pilot.py --arms gwas_annot
     python scripts/widedeepgp-pilot/analyze_pilot.py        # tables and figures in results/
 
+## Departures from the plan
+
+The plan specified the eight arms, the capacity measurements and the dry run. Three analyses
+were added while the pilot ran, because the planned read-out turned out not to bear on the
+question: the scoring with permuted genotypes, the positive control on simulated traits with its
+variants, and the arm with association statistics as annotation on the real labels. Each was
+designed before its own result was seen but in the light of the results before it: the variants
+of the control were chosen one after another to locate the obstacle. They are an adaptive
+sequence of experiments, not a pre-specified one, and should be read as such.
+
+One check was added after the pilot: the bf16 repeat of the dry run (12 November, above),
+because the bf16 arm had been compared only at the proxy's sequence lengths.
+
 ## Limitations
 
+- **The positive control is at pilot scale**: 40,000 training participants, 157,279 SNPs, a
+  model of width 32 with one layer, at most 30 epoch-equivalents. It shows that the network,
+  given all the SNPs, learns next to no SNP effects there while linear methods learn them; it
+  does not show that a larger model trained for longer on five times the participants could not.
+- **The simulated traits are simpler than real ones**: additive, with normally distributed
+  effects, no covariate effects and no dominance or interaction, which a network could in
+  principle exploit and a linear method could not.
+- **The control's runs have one seed each**, and the association statistics given to the
+  network in the control were computed from its own training participants. Tuning participants
+  played no part in them, so the reported AUROCs are honest, but the network was partly fitting
+  its own labels' noise.
+- **The account of why** (a position code too coarse to address single SNPs) is an argument
+  consistent with the results, not something the experiments isolate.
+- **The read-out with permuted genotypes cannot see a SNP path that hurts**: a path that only
+  adds noise adds the same noise when the genotypes are permuted, so it shows no drop. Every
+  network of the pilot ended below the covariates-only model, which this read-out cannot
+  explain; the gain over that model is therefore reported beside it.
 - The proxy has an eighth of the SNPs and under a fifth of the training participants, and runs
-  for six epoch-equivalents. It ranks training schemes; it does not estimate the accuracy of
-  the full model, and a scheme's advantage could change with more data or longer training.
+  for six epoch-equivalents. On the real labels it can rank the training machinery (speed,
+  memory, calibration, and how well a training scheme fits what the covariates carry, as AUROC
+  differences) but not designs by what they learn from the SNPs, of which it holds very little
+  (section 5 of the results); it does not estimate the accuracy of the full model, and a
+  scheme's advantage could change with more data or longer training.
 - With so little genetic information, most of the AUROC comes from the covariates. Arms that
   differ only in how the genotypes are used (annotations, the sequence block) have little room
   to separate, so a tie in the pilot is weak evidence of no difference at full size.

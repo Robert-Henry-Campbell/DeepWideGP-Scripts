@@ -8,7 +8,8 @@
   "p99": 12.0,
   "share_none": 0.31807737918766676,
   "share_one": 0.1729728728135191,
-  "share_five_or_more": 0.2019113178179662
+  "share_five_or_more": 0.2019113178179662,
+  "share_twelve_or_more": 0.014388155944263268
  },
  "sum_of_prevalences": 2.5088107767565964,
  "label_information_4pi(1-pi)_summed": 8.85371285388239,

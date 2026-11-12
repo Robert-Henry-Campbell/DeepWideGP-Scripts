@@ -113,6 +113,19 @@ def test_describe_reports_sampling_rates_that_average_one():
     assert per["class_weight_sqrt"].tolist() == pytest.approx(np.sqrt(per["class_weight_parity"]).tolist())
 
 
+def test_describe_reports_the_share_with_twelve_or_more_and_no_maximum():
+    import describe_dataset as dd
+    rng = np.random.default_rng(1)
+    frailty = rng.normal(size=4000)                            # some people have none, some 12 or more of 14
+    y = (frailty[:, None] + rng.normal(size=(4000, 14)) > np.linspace(0.0, 1.3, 14)).astype(np.float64)
+    _, s = dd.describe(y, [f"d{i}" for i in range(14)])
+    k = y.sum(axis=1)
+    assert (k >= 12).any() and (k == 0).any()
+    assert s["diseases_per_person"]["share_twelve_or_more"] == pytest.approx((k >= 12).mean())
+    # a maximum describes one participant, so neither summary reports one
+    assert "max" not in s["diseases_per_person"] and "max" not in s["omega"]
+
+
 # ---- make_proxy_dataset.py -------------------------------------------------------------------
 def test_proxy_stretches_tile_a_chromosome():
     import make_proxy_dataset as mp

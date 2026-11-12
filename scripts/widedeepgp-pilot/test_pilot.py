@@ -135,3 +135,92 @@ def test_residualising_removes_what_the_covariates_explain():
     r = ga.residualise(y, cov)
     assert np.allclose(r.std(axis=0), 1.0) and np.abs(r.mean(axis=0)).max() < 1e-9
     assert np.abs(np.corrcoef(np.column_stack([r, cov]).T)[:2, 2:]).max() < 1e-9   # nothing of the covariates is left
+
+
+def test_a_label_that_does_not_apply_leaves_the_person_out_of_its_auroc():
+    import numpy as np
+
+    import genetic_signal as gs
+    from sklearn.metrics import roc_auc_score
+    rng = np.random.default_rng(1)
+    n = 3000
+    score = rng.normal(size=(n, 2))
+    y = (rng.random((n, 2)) < 1 / (1 + np.exp(-(score - 1.5)))).astype(float)
+    y[rng.random(n) < 0.4, 1] = np.nan                                         # e.g. a sex-specific disease
+    au = gs.aurocs(score, y)
+    ok = ~np.isnan(y[:, 1])
+    assert au[0] == pytest.approx(roc_auc_score(y[:, 0], score[:, 0]))
+    assert au[1] == pytest.approx(roc_auc_score(y[ok, 1], score[ok, 1]))       # not counted as a non-case
+    perms = [score[rng.permutation(n)] for _ in range(2)]
+    a, p, lo, hi, se = gs.drop_with_interval(score, perms, y, n_boot=50)
+    assert np.isfinite([lo, hi, se]).all() and lo < (a - p).mean() < hi
+    assert np.isnan(gs.aurocs(score, np.zeros((n, 2)))).all()                  # no case: no AUROC
+
+
+def test_rows_replace_their_own_arm_and_seed_and_each_experiment_has_its_files(tmp_path):
+    import genetic_signal as gs
+    run_path, disease_path = gs.table_paths("pilot", tmp_path)
+    assert (run_path.name, disease_path.name) == ("genetic_signal.csv", "genetic_signal_by_disease.csv")
+    row = lambda arm, seed, v: dict(arm=arm, seed=seed, genetic_part=v)
+    gs.merge_rows(run_path, [row("default", 1, 0.1), row("default", 2, 0.2), row("annot", 1, 0.3)], ["arm", "seed"])
+    gs.merge_rows(run_path, [row("default", 1, 0.5)], ["arm", "seed"])        # one seed of an arm scored again
+    t = pd.read_csv(run_path).set_index(["arm", "seed"])["genetic_part"]
+    assert len(t) == 3 and t[("default", 1)] == 0.5 and t[("default", 2)] == 0.2 and t[("annot", 1)] == 0.3
+    gs.merge_rows(disease_path, [dict(arm="default", seed=1, label=d, auroc=0.6) for d in ("I10", "E11")],
+                  ["arm", "seed", "label"])
+    gs.merge_rows(disease_path, [dict(arm="default", seed=1, label="I10", auroc=0.7)], ["arm", "seed", "label"])
+    d = pd.read_csv(disease_path).set_index("label")["auroc"]
+    assert d["I10"] == 0.7 and d["E11"] == 0.6
+    # another experiment with the same arm names writes files of its own
+    sim_path = gs.table_paths("pilot_sim", tmp_path)[0]
+    assert sim_path.name == "genetic_signal_pilot_sim.csv"
+    assert gs.table_paths("pilot_sim", tmp_path)[1].name == "genetic_signal_pilot_sim_by_disease.csv"
+    gs.merge_rows(sim_path, [row("default", 1, 0.9)], ["arm", "seed"])
+    assert pd.read_csv(run_path).set_index(["arm", "seed"])["genetic_part"][("default", 1)] == 0.5
+
+
+def test_the_data_are_loaded_again_when_a_runs_dataset_differs():
+    import genetic_signal as gs
+    built = []
+    build = lambda cfg: built.append(cfg.rd_mode) or f"dm of {cfg.rd_mode}"
+    cfg = lambda rd_mode, **arm: SimpleNamespace(data_dir="D", label="ard30", rd_mode=rd_mode, snp_stats="train", **arm)
+    cache = {}
+    runs = [cfg("proxy8"), cfg("proxy8", annot=True, precision="bf16"),          # model settings: same data
+            cfg("proxy8_gwas", annot=True), cfg("proxy8")]                       # a variant of its own, and back
+    assert [gs.data_for(c, cache, build) for c in runs] == ["dm of proxy8", "dm of proxy8", "dm of proxy8_gwas",
+                                                            "dm of proxy8"]
+    assert built == ["proxy8", "proxy8_gwas", "proxy8"]
+    gs.data_for(SimpleNamespace(data_dir="D", label="ard30", rd_mode="proxy8", snp_stats="store"), cache, build)
+    assert len(built) == 4                                                     # other SNP statistics: other inputs
+
+
+def test_a_run_is_scored_from_the_checkpoint_results_json_names(tmp_path):
+    import json
+
+    import genetic_signal as gs
+    run = tmp_path / "selected_long_s1"
+    (run / "checkpoints").mkdir(parents=True)
+    json.dump({"best_checkpoint": "/elsewhere/selected_long_s1/checkpoints/best-v1.ckpt"}, open(run / "results.json", "w"))
+    assert gs.best_checkpoint(run) == run / "checkpoints" / "best-v1.ckpt"
+
+
+def test_a_label_without_cases_is_left_out_of_the_genetic_part():
+    """A label with no case among the people scored has no AUROC; the means and the interval are
+    over the labels that have one, and the bootstrap still runs."""
+    import numpy as np
+
+    import genetic_signal as gs
+    rng = np.random.default_rng(3)
+    n = 3000
+    g, cov = rng.normal(size=n), rng.normal(size=n)
+    y = np.column_stack([(rng.random(n) < 1 / (1 + np.exp(-(cov + g - 1.5)))),
+                         (rng.random(n) < 1 / (1 + np.exp(-(cov - 1.5)))), np.zeros(n)]).astype(float)
+    score = lambda gg: np.column_stack([cov + gg, cov + 0 * gg, cov + gg])
+    base = score(g)
+    perms = [score(g[rng.permutation(n)]) for _ in range(3)]
+    au, pu, lo, hi, se = gs.drop_with_interval(base, perms, y, n_boot=60)
+    assert np.isnan(au[2]) and np.isnan(pu[2]) and not np.isnan(au[:2]).any()
+    part = np.nanmean(au - pu)
+    assert np.isfinite([lo, hi, se]).all() and lo < part < hi and part > 0.02
+    with pytest.raises(ValueError, match="no label has both"):
+        gs.drop_with_interval(base[:, 2:], [q[:, 2:] for q in perms], y[:, 2:], n_boot=5)

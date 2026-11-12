@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Describe the built 30-disease dataset: cases by split, and what disease-balanced batches do
-to it. Aggregate numbers only; nothing participant-level is printed or written.
+to it. Aggregate numbers only; nothing participant-level is printed or written, and no maximum
+over participants (it would describe one person).
 
 Reads   <data_dir>/datasets/ard30/hm3plus/{labels.json, build_log.json, samples_train.tsv}
 Writes  results/ard30_cases_by_split.csv        one row per phenotype
@@ -75,14 +76,14 @@ def describe(y, names, co=None):
     summary = {
         "n_train": int(n_people), "n_diseases": int(n),
         "diseases_per_person": {"mean": float(k.mean()), "median": q(k, 50), "p90": q(k, 90), "p99": q(k, 99),
-                                "max": int(k.max()), "share_none": float(none.mean()),
-                                "share_one": float((k == 1).mean()), "share_five_or_more": float((k >= 5).mean())},
+                                "share_none": float(none.mean()), "share_one": float((k == 1).mean()),
+                                "share_five_or_more": float((k >= 5).mean()),
+                                "share_twelve_or_more": float((k >= 12).mean())},
         "sum_of_prevalences": float(pi.sum()),
         "label_information_4pi(1-pi)_summed": float((4 * pi * (1 - pi)).sum()),
         "omega": {"mean": float(omega.mean()), "none_of_the_30": float(omega[none].mean()),
                   "min": float(omega.min()), "p50": q(omega, 50), "p90": q(omega, 90), "p99": q(omega, 99),
-                  "mean_of_top_1pct": float(np.sort(omega)[-max(1, n_people // 100):].mean()),
-                  "max": float(omega.max())},
+                  "mean_of_top_1pct": float(np.sort(omega)[-max(1, n_people // 100):].mean())},
         # the rotation draws person k with probability proportional to omega_k and the loss weights
         # them by 1 / omega_k: Kish effective share of the draws = 1 / (mean omega * mean 1/omega)
         "effective_sample_share_with_correction": float(1.0 / (omega.mean() * (1.0 / omega).mean())),

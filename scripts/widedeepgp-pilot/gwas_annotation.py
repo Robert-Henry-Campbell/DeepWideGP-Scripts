@@ -20,9 +20,12 @@ model fitted on the proxy's training participants and scored on its tuning parti
 
 Writes <data>/datasets/ard30/hm3plus_proxy8_gwas/ (store.json, annotations_gwas.npz, links to
 the proxy's tables, gwas_log.json), a second dataset hm3plus_proxy8_gwasclump/ whose channels
-keep the z-score only at each disease's clumped lead SNPs (the weights of the clumped score),
-and results/gwas_annotation_reference.csv. Aggregate numbers
-only are printed or written into the repository. Needs one GPU for a few minutes.
+keep the z-score only at each disease's clumped lead SNPs (all of them, p < 1e-3: the candidate
+weights of the clumped score, whose threshold keeps fewer for some diseases), and
+results/gwas_annotation_reference.csv. Aggregate numbers only are printed or written into the
+repository. Needs one GPU for a few minutes. It stops unless the proxy's third table is
+recorded (proxy_log.json) as a draw from the training split, because it chooses the score's
+threshold on that table without the test lock.
 
     CUDA_VISIBLE_DEVICES=<gpu> python scripts/widedeepgp-pilot/gwas_annotation.py
     python scripts/widedeepgp-pilot/run_pilot.py --arms gwas_annot --rd-mode hm3plus_proxy8_gwas
@@ -41,6 +44,8 @@ import pandas as pd
 
 HERE = Path(__file__).resolve().parent
 RES = HERE / "results"
+sys.path.insert(0, str(HERE))
+from simulated_control import require_training_draw  # noqa: E402
 DEEPGP_REPO = os.environ.get("DEEPGP_REPO", "/mnt/sdg/robert/deepwidegp/DeepWideGP")
 DATA = "/mnt/sdg/robert/deepwidegp/data/datasets"
 CLUMP_Z, CLUMP_R2, CLUMP_WINDOW = 3.29, 0.1, 500
@@ -61,6 +66,7 @@ def main(argv=None):
     ap.add_argument("--full", default="hm3plus")
     ap.add_argument("--name", default="hm3plus_proxy8_gwas")
     a = ap.parse_args(argv)
+    require_training_draw(Path(a.data) / "ard30" / a.proxy)
     import torch
     from sklearn.linear_model import LogisticRegression
     from sklearn.metrics import roc_auc_score
@@ -137,7 +143,7 @@ def main(argv=None):
     rows, z_clumped = [], np.zeros_like(z)
     for j, lab in enumerate(labels):
         lead = clump(j)
-        z_clumped[lead, j] = z[lead, j]                  # the weights of a clumped polygenic score
+        z_clumped[lead, j] = z[lead, j]                  # every clumped lead: the candidate weights of the score below
         base = LogisticRegression(max_iter=2000).fit(cov["train"], y["train"][:, j])
         auc0 = roc_auc_score(y["val"][:, j], base.decision_function(cov["val"]))
         best = None

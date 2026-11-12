@@ -15,7 +15,7 @@ vector for every SNP. The model itself is described in `DeepWideGP/methods.md`.
 |---|---|
 | Phenotypes | UK Biobank application 15181, local extract of 18 November 2024 (502,399 participants) |
 | Withdrawals | The application's list of 25 April 2024 |
-| Genotypes | The laboratory's PLINK2 files of UK Biobank imputed data v3 (GRCh37; bi-allelic SNPs; filtered on minor-allele frequency, Hardy–Weinberg equilibrium and missingness): 7,813,490 SNPs for 333,444 participants of White-British genetic ancestry, and a second set with the same SNPs for 17,055 Asian and Black participants |
+| Genotypes | The laboratory's PLINK2 files of UK Biobank imputed data v3 (GRCh37; bi-allelic SNPs; filtered on minor-allele frequency, Hardy–Weinberg equilibrium and missingness): 7,813,490 SNPs for 333,444 participants (the laboratory's White-British set; of the 333,324 not withdrawn, 7 lack field 22006 = 1 in this extract), and a second set with the same SNPs for 17,055 Asian and Black participants |
 | SNP set | The HapMap3+ map of LDpred2 (Privé et al., 2023; figshare file 37802721): 1,444,196 variants |
 | Diseases | The 30 phenotypes selected by `find-ukb-ard-phenos` (`results/ukb_ard_selected_phenos_overview.csv`) |
 | Annotations | `annot_baseline2.2.txt` distributed with SBayesRC (Zheng et al., 2024): 96 annotations of the baseline-LD model v2.2 (Gazal et al., 2017) for 8,140,663 SNPs |
@@ -23,13 +23,16 @@ vector for every SNP. The model itself is described in `DeepWideGP/methods.md`.
 ## SNPs (`make_snp_list.R`)
 
 The HapMap3+ map was matched to the variant lists of the genotype files by chromosome and
-position, and a match was kept only if the two alleles agreed, in either order. 1,258,200 of
-the 1,444,196 variants are present (87.1%): 1,012,953 of the 1,054,330 HapMap3 variants and
-245,247 of the 389,866 added ones. The variant identifiers agree for every match. Of the
-185,996 absent variants, 116,513 have a minor-allele frequency below 1% in UK Biobank (the
-lowest frequency among the variants present is 0.98%) and 69,483 are more frequent and were
-removed by the other filters applied when the genotype files were built. Chromosome 2 has the
-most SNPs (105,260) and chromosome 21 the fewest (17,844).
+position, and a match was kept only if the two alleles agreed, in either order. 1,258,200 of the
+1,444,196 variants are present (87.1%): 1,012,953 of the 1,054,330 HapMap3 variants and 245,247
+of the 389,866 added ones. The variant identifiers of the genotype files agree with the map's
+for every match. The HapMap3/added split comes from matching the HapMap3+ map with the HapMap3
+map of LDpred2's European LD reference (Privé et al., 2022; figshare file 36363087), all of
+whose 1,054,330 variants are in HapMap3+; it was computed separately and is not written by
+`make_snp_list.R`. Of the 185,996 absent variants, 116,513 have a minor-allele frequency below
+1% in UK Biobank (the lowest frequency among the variants present is 0.98%) and 69,483 are more
+frequent and were removed by the other filters applied when the genotype files were built.
+Chromosome 2 has the most SNPs (105,260) and chromosome 21 the fewest (17,844).
 
 The genotypes of these SNPs were then converted for all 333,444 participants into the
 project's compact on-disk format (`DeepWideGP/genostore`, `convert.py --extract`), reading only
@@ -42,6 +45,13 @@ The same list was converted in the same way for the 17,055 participants of the s
 set (7.6 GB; 0.35 bytes per genotype, because more of their genotypes are imputed with
 fractional dosages). All 1,258,200 SNPs are present there too, in the same order, so one model
 input serves both sets; the audit again agreed for every chromosome.
+
+Both stores hold every participant of their genotype files, including those on the withdrawal
+list of 25 April 2024: 120 in the first and 16 in the second. Every table of the dataset
+excludes them (next section), and the pilot standardised the SNPs with statistics computed over
+its training split, so they influenced nothing; statistics computed over a whole store (the
+model's option `--snp_stats store`) would include them. The stores are readable by their owner
+only (directories 0700, files 0600).
 
 ## Participants
 
@@ -143,7 +153,8 @@ so the training split was summarised (`results/ard30_sampling_summary.json`,
 `results/ard30_sampling_by_disease.csv`):
 
 - **Phenotypes per participant.** Mean 2.51 (the sum of the 30 prevalences), median 2; 31.8% of
-  training participants have none, 17.3% have one, 20.2% have five or more and 1% have 12 or more.
+  training participants have none, 17.3% have one, 20.2% have five or more and 1.4% have 12 or
+  more (the 99th percentile is 12).
 - **Case share in batches.** A batch balanced on phenotype *i* draws half its participants from
   the cases of *i* and half from its non-cases, so the expected share of cases of phenotype *j*
   in it is P(*j* | *i*)/2 + P(*j* | not *i*)/2, computed from the co-occurrence counts. Averaged
@@ -155,8 +166,9 @@ so the training split was summarised (`results/ard30_sampling_summary.json`,
 - **Sampling rate.** A participant's sampling rate ω is how often the rotation draws them
   relative to uniform drawing (mean 1 by construction; computed with the model code's own
   function). It is 0.55 for a participant with none of the phenotypes, 0.80 at the median, 1.77
-  at the 90th percentile and 3.10 at the 99th. Weighting draws by 1/ω, as
-  the training loss does, leaves an effective sample of 80.0% of the draws (Kish's formula).
+  at the 90th percentile and 3.10 at the 99th, and averages 3.59 over the top 1%. Weighting
+  draws by 1/ω, as the training loss does, leaves an effective sample of 80.0% of the draws
+  (Kish's formula).
 - **Class weights.** Bringing each phenotype to parity between cases and non-cases would need
   weights on cases from 2.2 (I10) to 25.7 (I21); their square roots, which the model uses by
   default, run from 1.5 to 5.1.
@@ -168,22 +180,31 @@ so the training split was summarised (`results/ard30_sampling_summary.json`,
 The annotation table was matched to the SNP list by variant identifier. 1,250,863 of the
 1,258,200 SNPs have a row (99.4%); the others were given zeros, and a 97th channel marks
 them. The table's intercept column was dropped. Matrices are stored per chromosome in the order
-of the genotype store; the model standardises each channel over its SNPs.
+of the genotype store; the model standardises each channel over its SNPs. As a check of the
+join, the mean minor-allele frequency of the 157,279 proxy SNPs (below), computed over the
+proxy's 40,000 training participants, rises monotonically across the baseline-LD model's ten
+frequency-bin channels (`MAFbin1` to `MAFbin10`), from 0.059 to 0.465, as it should if the
+rows are joined to the right SNPs; over all 1,258,200 SNPs and the 215,872 training
+participants it rises from 0.059 to 0.464.
 
 ## Proxy dataset for pilots (`make_proxy_dataset.py`)
 
 Training time is proportional to participants times SNPs, and one pass over the full training
-split costs several GPU-hours. Pilot comparisons and the first stage of the hyper-parameter
-search therefore use a reduced dataset with the same 30 labels and 12 covariates:
+split costs several GPU-hours. For pilot comparisons and the first stage of the hyper-parameter
+search, a reduced dataset with the same 30 labels and 12 covariates was therefore built:
 
 - **SNPs.** One contiguous stretch of every chromosome: the SNPs from one eighth to two eighths
-  of the way along it, by SNP index (157,279 SNPs; between 2,231 on chromosome 21 and 13,158
-  on chromosome 2). A contiguous stretch keeps the local linkage disequilibrium that the full
-  model sees, which thinning would not. The second eighth was chosen, before any model was
-  trained, because of 20 well-established loci for these diseases that were looked up it holds
-  the most (five: 9p21, the HLA region, *LDLR*, *PCSK9* and *GCKR*); the choice makes the proxy
-  more likely to carry genetic signal and applies equally to every arm of a comparison. No
-  genotype is copied: the proxy's `store.json` names the stretches as regions of the same store.
+  of the way along it, by SNP index (157,279 SNPs; between 2,231 on chromosome 21 and 13,158 on
+  chromosome 2). A contiguous stretch keeps the local linkage disequilibrium that the full model
+  sees, which thinning would not. The second eighth was chosen, before any model was trained on
+  these data, because it holds the most of twenty well-established loci for these diseases and
+  related traits, listed from memory with approximate GRCh37 positions that were not checked
+  against a catalogue: five (9p21, the HLA region, *LDLR*, *PCSK9* and *GCKR*), against one to
+  three in each of the others (`results/proxy_region_loci.csv`, written by
+  `proxy_region_loci.py`). The choice makes the proxy more likely to carry genetic signal,
+  although the pilot found that it carries very little for the real labels (below), and it
+  applies equally to every arm of a comparison. No genotype is copied: the proxy's `store.json`
+  names the stretches as regions of the same store.
 - **Participants.** 40,000 drawn at random from the training split and 10,000 from the tuning
   split (seed 20261112). The rarest phenotype (I21) has 1,557 cases among the 40,000 and 373
   among the 10,000.
@@ -191,8 +212,14 @@ search therefore use a reduced dataset with the same 30 labels and 12 covariates
   drawn from the *training* split, disjoint from the proxy's 40,000. The real test set is not
   part of the proxy dataset, so a pilot cannot read it.
 
-Results on the proxy rank training schemes; they are not estimates of the full model's
-accuracy.
+The pilot (`widedeepgp-pilot/results.md`, sections 3 to 5) found that the proxy carries very
+little signal for the real labels: a clumped polygenic score of its SNPs, built from a GWAS of
+165,872 other training participants and added to the covariates, raises the mean tuning AUROC by
+0.0014. On the real labels the proxy can therefore compare training machinery (speed, memory,
+calibration, and how well a training scheme fits what the covariates carry, as AUROC
+differences) but not designs by what they learn from the SNPs. Its genotypes are also the base
+of the pilot's positive control, in which traits are simulated on them. Results on the proxy are
+not estimates of the full model's accuracy.
 
 ## Outputs
 
@@ -210,25 +237,35 @@ Under `/mnt/sdg/robert/deepwidegp/data/` (participant-level; outside any git rep
 
 `build_log.json` records the participant flow, the counts by group, the covariate summary, the
 co-occurrence of the 30 phenotypes in the training set, the checks and the checksums of the
-inputs. It holds aggregate numbers only.
+inputs. It holds aggregate numbers, including each covariate's minimum and maximum in the
+training split, which are single participants' values (one reason it stays in the data
+directory).
 
 In this folder, `results/` holds the aggregate tables written by `describe_dataset.py`: cases by
-split, per-phenotype sampling figures and the sampling summary. Counts for the Asian and Black
+split, per-phenotype sampling figures and the sampling summary, which gives percentiles of the
+per-participant figures but no maximum over participants (such a maximum describes one
+person). It also holds `proxy_region_loci.csv`, written by `proxy_region_loci.py`: the 20
+loci behind the choice of the proxy's region, each placed in the eighth (numbered 1 to 8) that
+holds the first SNP of the store at or after its position. Counts for the Asian and Black
 groups, some of which are small, are kept in `build_log.json` and not in the repository.
 
 ## Software
 
 R 4 with data.table (SNP list); Python 3.10 with pandas 2.3.3 and NumPy 1.26.4 (dataset);
-pgenlib 0.95.2 (genotype conversion). Unit tests on made-up records: `test_build_dataset.py`
-(labels, year of birth, split, tables, the description of sampling, the proxy's stretches and
-draws).
+pgenlib 0.95.2 with Python 3.11 (genotype conversion), in the separate environment `gsem-py`
+(`/mnt/sdg/robert/miniforge3/envs/gsem-py`), because pgenlib is not installed in the model's
+environment. Unit tests on made-up records: `test_build_dataset.py` (labels, year of birth,
+split, tables, the description of sampling, the proxy's stretches and draws).
 
     Rscript scripts/build-ard30-dataset/make_snp_list.R
-    python -m genostore.convert --pgen-dir <pgen dir> --pattern "UKB_chr{chrom}" --chroms $(seq 1 22) \
-        --extract <data>/reference/hm3plus_in_ukb_pgen.tsv --out <data>/genostore/hm3plus   # in DeepWideGP
+    <gsem-py>/bin/python -m genostore.convert --pgen-dir <pgen dir> \
+        --pattern "UKB_chr{chrom}" --chroms $(seq 1 22) \
+        --extract <data>/reference/hm3plus_in_ukb_pgen.tsv \
+        --out <data>/genostore/hm3plus   # in DeepWideGP
     python scripts/build-ard30-dataset/build_dataset.py
     python scripts/build-ard30-dataset/describe_dataset.py
     python scripts/build-ard30-dataset/make_proxy_dataset.py
+    python scripts/build-ard30-dataset/proxy_region_loci.py
 
 ## Limitations
 
@@ -245,6 +282,8 @@ draws).
 
 - Gazal S, Finucane HK, Furlotte NA, et al. Linkage disequilibrium-dependent architecture of
   human complex traits shows action of negative selection. *Nat Genet* 2017;49:1421–1427.
+- Privé F, Arbel J, Aschard H, Vilhjálmsson BJ. Identifying and correcting for
+  misspecifications in GWAS summary statistics and polygenic scores. *HGG Adv* 2022;3:100136.
 - Privé F, Albiñana C, Arbel J, Pasaniuc B, Vilhjálmsson BJ. Inferring disease architecture and
   predictive ability with LDpred2-auto. *Am J Hum Genet* 2023;110:2042–2055.
 - Zheng Z, Liu S, Sidorenko J, et al. Leveraging functional genomic annotations and genome

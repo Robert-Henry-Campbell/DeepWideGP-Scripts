@@ -15,6 +15,7 @@ process, so a failed allocation leaves nothing behind. Prints one JSON line.
 from __future__ import annotations
 
 import argparse
+import inspect
 import json
 import os
 import sys
@@ -60,7 +61,10 @@ def build(a, seq_len):
     Shape.seq_len = seq_len
     annot_names = [f"a{i}" for i in range(N_ANNOT)] if a.annot else None
     annot = [rng.standard_normal((n, N_ANNOT), dtype=np.float32) for n in seq_len] if a.annot else None
-    return WideDeepGP(model_hparams(cfg, Shape, None, annot_names), Shape.pos_chr, annot)
+    # the annotations' digest is passed where model_hparams records it; the code frozen for the
+    # pilot (DEEPGP_REPO=runs/pilot_code_8f03ca6) predates that argument
+    kw = {"annot": annot} if "annot" in inspect.signature(model_hparams).parameters else {}
+    return WideDeepGP(model_hparams(cfg, Shape, None, annot_names, **kw), Shape.pos_chr, annot)
 
 
 def main(argv=None):

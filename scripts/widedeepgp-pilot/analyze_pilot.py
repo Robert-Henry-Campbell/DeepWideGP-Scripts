@@ -5,7 +5,8 @@ Reads every run directory <runs>/<experiment>/<arm>_s<seed>/ that has a results.
 writes into results/:
 
     pilot_runs.csv            one row per run
-    pilot_arms.csv            one row per arm: mean over seeds, seed range, difference from the default
+    pilot_arms.csv            one row per arm: mean over seeds, seed range, difference from the default,
+                              gain over the covariates-only model
     pilot_equal_time.csv      arms compared with the default at equal GPU time
     pilot_curves.csv          mean tuning AUROC at every validation pass of every run
     pilot_per_disease.csv     tuning AUROC of every disease: covariates only, and each arm
@@ -190,6 +191,15 @@ def disease_table(runs, cov):
     return pd.DataFrame(out)
 
 
+def against_covariates(rt, at, dt, cov_mean):
+    """Every result as a gain over the covariates-only model (negative when below it): for each
+    run, for each arm's mean over seeds, and the number of diseases on which the arm's mean over
+    seeds is below the covariates-only model."""
+    below = {arm: int((dt[arm] < dt.covariates_only).sum()) for arm in at.arm if arm in dt}
+    return (rt.assign(gain_over_covariates=rt.best_auroc_mean - cov_mean),
+            at.assign(gain_over_covariates=at.best_auroc_mean - cov_mean, diseases_below_covariates=at.arm.map(below)))
+
+
 def markdown_table(rt, at, gs):
     """The arm table of results.md, one row per arm with its seeds side by side."""
     lines = ["| Arm | Best mean tuning AUROC, by seed | Mean | Cross-entropy | Genotype-dependent part, by seed (95% interval) "
@@ -323,8 +333,9 @@ def fig_arms(rt, at, cov_mean):
     legend = f"""
 **Figure 2. Best mean tuning AUROC of each arm.** Dots are the two seeds of an arm and the
 black tick their mean. The vertical line is the mean of the default configuration and the
-shaded band the range of its two seeds; an arm whose mean lies outside the band, by more than
-its own seed range, differs from the default by more than seed-to-seed variation. The dashed
+shaded band the range of its two seeds. By the rule fixed before the pilot, an arm differs
+from the default when the distance between its tick and the vertical line exceeds the larger
+of the two seed ranges (the width of the band, or the spread of the arm's own dots). The dashed
 line is a logistic model on the 12 covariates alone, fitted on the same training participants
 (mean tuning AUROC {cov_mean:.4f}). Data: `fig2_arms_data.csv`.
 """
@@ -412,6 +423,7 @@ def main(argv=None):
     dt = disease_table(runs, cov)
     at["covariates_only_auroc_mean"] = cov_mean
     at["covariates_only_bce_mean"] = cov_bce
+    rt, at = against_covariates(rt, at, dt, cov_mean)
     gs = pd.read_csv(RES / "genetic_signal.csv") if (RES / "genetic_signal.csv").exists() else None
     if gs is not None:
         g = gs.groupby("arm").agg(genetic_part=("genetic_part", "mean"), genetic_part_min=("genetic_part", "min"),

@@ -21,7 +21,11 @@ data.
     gwas       writes <...>/hm3plus_proxy8_sim_gwas: the same traits with an annotation channel
                per trait holding each SNP's signed association z-score in the training
                participants (train it with --annot).
-    summarise  after the runs: every run's tuning AUROC per trait beside those references.
+    summarise  after the runs: every run's tuning AUROC per trait at the end of training, beside
+               those references, and figure 5.
+
+Every command but summarise stops unless the dataset's third table is recorded (proxy_log.json)
+as a draw from the training split: the script reads that table without the test lock.
 
 Traits (liability-threshold model, prevalence 20%, no covariate effect, so the AUROC is all
 genetic):
@@ -49,6 +53,7 @@ import argparse
 import json
 import os
 import sys
+import textwrap
 import time
 from pathlib import Path
 
@@ -68,6 +73,43 @@ TRAITS = [("sim20", 20, 0.3, 1.0), ("sim200", 200, 0.5, 1.0), ("sim2000", 2000, 
 ENRICHED_IN = ("Coding_UCSC", "Conserved_LindbladToh")
 Z_THRESHOLDS = (0.0, 1.96, 3.29, 4.42, 5.45)           # p < 1, 0.05, 1e-3, 1e-5, 5e-8
 CLUMP_Z, CLUMP_R2, CLUMP_WINDOW = 3.29, 0.1, 500       # clumping: leads with p < 1e-3; r2 > 0.1 within 500 SNPs removed
+TRAINING_DRAW = "a draw from the training split"       # how a proxy's proxy_log.json describes its third table
+LONG_RUN = "selected_long"                             # the run continued beyond the pilot's length
+
+
+def third_table(dataset):
+    """What a dataset's third table ("test") is, as recorded where the dataset was made: a
+    proxy's proxy_log.json says so in words, and a dataset made from another (sim_log.json,
+    select_log.json) has its source's tables. None when nothing records it."""
+    d = Path(dataset)
+    if (d / "proxy_log.json").exists():
+        return json.load(open(d / "proxy_log.json")).get("test_table_is")
+    for log in ("sim_log.json", "select_log.json"):
+        if (d / log).exists():
+            return third_table(json.load(open(d / log))["source"])
+    return None
+
+
+def require_training_draw(dataset):
+    """Stop unless the dataset's third table is recorded as a draw from the training split. The
+    pilot's scripts read that table's genotypes and labels and choose thresholds on it without
+    the test lock of the model repository (score_snapshots.py), which is safe only as long as
+    the real test set is not in the dataset."""
+    what = third_table(dataset)
+    if not str(what).startswith(TRAINING_DRAW):
+        raise SystemExit(f"{dataset}: the third table is not recorded as {TRAINING_DRAW!r} (found {what!r}); "
+                         "this script reads it without the test lock, so it stops here")
+
+
+def make_private(path):
+    """Owner-only access to a folder and everything in it (folders 0700, files 0600), as for the
+    project's other genotype stores: they hold participant-level genotypes."""
+    os.chmod(path, 0o700)
+    for root, dirs, files in os.walk(path):
+        for name in dirs:
+            os.chmod(os.path.join(root, name), 0o700)
+        for name in files:
+            os.chmod(os.path.join(root, name), 0o600)
 
 
 def draw_effects(n_snps, traits, enriched, rng):
@@ -289,6 +331,7 @@ def select(a):
     if store.exists():
         import shutil
         shutil.rmtree(store)
+    os.makedirs(store, mode=0o700)                     # participant-level genotypes: owner-only from the start
     gf.create_store(str(store), [str(i) for i in ids], gf.BLOCK_VARIANTS, {"selected_from": str(src), "snps": int(q.shape[1])})
     at, per_chrom = 0, {}
     for i, seq in enumerate(spec["regions"]):
@@ -299,6 +342,7 @@ def select(a):
                                   pos=np.arange(k))
         at += k
         per_chrom[str(c)] = int(k)
+    make_private(store)                                 # and every file in it 0600, like the other stores
 
     new = {"store": str(store), "pos_mode": "index", "labels": spec["labels"], "covariates": spec["covariates"]}
     with open(out / "store.json", "w") as f:
@@ -370,9 +414,10 @@ def gwas(a):
     traits = [str(t) for t in gw["traits"]]
     out = _with_annotation(a, "_gwas", "annotations_gwas.npz", gw["z"].astype(np.float32), [f"z_{t}" for t in traits])
     print(f"wrote {out}: z-scores of {gw['z'].shape[0]} SNPs for {len(traits)} traits; |z| up to {np.abs(gw['z']).max():.1f}")
-    # the same statistics after clumping: a trait's channel is its z-score at its clumped lead SNPs
-    # (p < 1e-3; SNPs in LD with a stronger lead removed) and zero elsewhere, i.e. the weights of
-    # a clumped polygenic score
+    # the same statistics after clumping: a trait's channel is its z-score at all its clumped lead
+    # SNPs (p < 1e-3; SNPs in LD with a stronger lead removed) and zero elsewhere, i.e. the
+    # candidate weights of a clumped polygenic score (the score of build() keeps only the leads
+    # beyond a threshold chosen on the third table, so it uses fewer SNPs for some traits)
     clumped = np.zeros_like(gw["z"], dtype=np.float32)
     for j, t in enumerate(traits):
         lead = gw[f"leads_{t}"]
@@ -387,8 +432,8 @@ VARIANTS = {
     "mamba3": ("All SNPs, Mamba-3 block", "all SNPs, Mamba-3 in a bidirectional wrapper"),
     "annot": ("All SNPs + functional annotations", "all SNPs with the 96 functional annotations"),
     "oracle": ("All SNPs + causal SNPs marked", "all SNPs with an annotation channel per trait marking its causal SNPs"),
-    "gwas_annot": ("All SNPs + association z-scores", "all SNPs with each SNP's signed z-score per trait as annotation"),
     "gwasclump_annot": ("All SNPs + clumped z-scores", "all SNPs with z-scores kept at each trait's clumped lead SNPs only"),
+    "gwas_annot": ("All SNPs + association z-scores", "all SNPs with each SNP's signed z-score per trait as annotation"),
     "selected": ("GWAS-selected SNPs", "the 2,476 clumped lead SNPs only"),
     "selected_long": ("GWAS-selected SNPs, trained longer", "the same, continued to 30 epoch-equivalents"),
 }
@@ -405,10 +450,17 @@ def summarise(a):
         if m.empty:
             continue
         done = (d / "results.json").exists()
+        mean = m[(m.label == "MEAN") & (m.metric == "auroc")]
+        best_at = float(mean.epoch_equiv[mean.value.idxmax()])
         for trait in ref.index:
             c = m[(m.label == trait) & (m.metric == "auroc")]
+            # every run is read at the end of its training (auroc_last). The validation pass where its
+            # mean AUROC was highest is kept beside it, but that pass is chosen on the same tuning
+            # participants, so its AUROCs are optimistic.
             rows.append(dict(arm=arm, seed=int(seed), trait=trait, finished=done,
                              epoch_equivalents=float(c.epoch_equiv.max()), auroc_last=float(c.value.iloc[-1]),
+                             best_pass_epoch_equivalents=best_at,
+                             auroc_at_best_pass=float(c[c.epoch_equiv == best_at].value.iloc[0]),
                              auroc_best_of_run=float(c.value.max()),
                              auroc_at_6_epoch_equivalents=float(c[c.epoch_equiv <= 6.02].value.iloc[-1]),
                              ceiling=ref.loc[trait, "ceiling_auroc_tune"], prs=ref.loc[trait, "prs_auroc_tune"],
@@ -471,16 +523,33 @@ def figure(out, ref):
     plt.close(fig)
     out.to_csv(RES / "fig5_control_data.csv", index=False, float_format="%.6g")
     with open(RES / "fig5_control_legend.md", "w") as f:
-        f.write("""**Figure 5. Positive control: traits simulated on the real genotypes.** Each panel is one
-simulated trait (prevalence 20%; heritability of liability 0.3 for the trait with 20 causal SNPs
-and 0.5 for the others; "enriched" means its causal SNPs were drawn 20 times more often from
-coding or conserved SNPs). Dots show the tuning AUROC of the network at the end of training for
-each version of its input (rows); training was 6 epoch-equivalents of the 40,000 training
-participants, and 30 for the row "trained longer". The dashed line is the better of two linear methods
-fitted to the same training participants (a clumped polygenic score and GBLUP), and the solid
-line is the AUROC of the true genetic value, which no method can exceed. An AUROC of 0.5 is
-chance. Data: `fig5_control_data.csv`.
-""")
+        f.write(legend(out))
+
+
+def length_text(values):
+    """Training lengths as the legend writes them (6.0096 -> "6", 13.5216 -> "13.5"), a range if
+    they differ."""
+    s = sorted({f"{round(float(v), 1):g}" for v in values}, key=float)
+    return s[0] if len(s) == 1 else f"{s[0]} to {s[-1]}"
+
+
+def legend(out):
+    """The legend of figure 5, with the training lengths read from the runs."""
+    length = out.groupby("arm").epoch_equivalents.max()
+    longer = ""
+    if LONG_RUN in length:
+        peak = out[out.arm == LONG_RUN].best_pass_epoch_equivalents.iloc[0]
+        longer = (f', and {length_text([length[LONG_RUN]])} for the row "trained longer", whose mean AUROC was '
+                  f"highest at {length_text([peak])} epoch-equivalents and lower after that")
+    text = ("**Figure 5. Positive control: traits simulated on the real genotypes.** Each panel is one simulated trait "
+            "(prevalence 20%; heritability of liability 0.3 for the trait with 20 causal SNPs and 0.5 for the others; "
+            '"enriched" means its causal SNPs were drawn 20 times more often from coding or conserved SNPs). Dots show '
+            "the tuning AUROC of the network at the end of training for each version of its input (rows); training was "
+            f"{length_text(length.drop(LONG_RUN, errors='ignore'))} epoch-equivalents of the 40,000 training "
+            f"participants{longer}. The dashed line is the better of two linear methods fitted to the same training "
+            "participants (a clumped polygenic score and GBLUP), and the solid line is the AUROC of the true genetic "
+            "value, which no method can exceed. An AUROC of 0.5 is chance. Data: `fig5_control_data.csv`.")
+    return textwrap.fill(text, width=96, break_on_hyphens=False) + "\n"
 
 
 def main(argv=None):
@@ -494,6 +563,8 @@ def main(argv=None):
     ap.add_argument("--runs", default=RUNS)
     ap.add_argument("--experiment", default="pilot_sim")
     a = ap.parse_args(argv)
+    if a.command != "summarise":                       # build reads its source; the others the simulated dataset
+        require_training_draw(Path(a.data) / "ard30" / (a.source if a.command == "build" else a.name))
     {"build": build, "select": select, "oracle": oracle, "gwas": gwas, "summarise": summarise}[a.command](a)
 
 
