@@ -46,12 +46,22 @@ set (7.6 GB; 0.35 bytes per genotype, because more of their genotypes are impute
 fractional dosages). All 1,258,200 SNPs are present there too, in the same order, so one model
 input serves both sets; the audit again agreed for every chromosome.
 
-Both stores hold every participant of their genotype files, including those on the withdrawal
-list of 25 April 2024: 120 in the first and 16 in the second. Every table of the dataset
-excludes them (next section), and the pilot standardised the SNPs with statistics computed over
-its training split, so they influenced nothing; statistics computed over a whole store (the
-model's option `--snp_stats store`) would include them. The stores are readable by their owner
-only (directories 0700, files 0600).
+Both stores were first built with every participant of their genotype files, including those
+on the withdrawal list of 25 April 2024: 120 in the first and 16 in the second. Every table of
+the dataset excludes them (next section), and the pilot standardised the SNPs with statistics
+computed over its training split, so they influenced nothing. On 12–13 November 2026 both stores
+were rebuilt without them (`rebuild_stores_without_withdrawn.sh`), so that no file holds their
+genotypes and statistics over a whole store (the model's option `--snp_stats store`) cannot
+include them: the same conversion of the same SNP list, for the participants of the genotype
+files minus the withdrawal list (333,324 and 17,039 participants); the converter's own audit
+(0 mismatches on all 22 chromosomes of both stores); and a comparison with the store it replaced
+(`check_rebuilt_store.py`): no withdrawn participant left, every participant of every sample
+table of the datasets present, identical variant lists, and identical genotypes for 2,000
+participants on chromosomes 1, 6 and 22 (407 million genotypes in each store, none different).
+Only then was the old store deleted and the new one moved into its place, so every dataset's
+`store.json` still names it; datasets name participants, not store rows, so no table changed.
+The rebuilt stores take 116 GB and 7.7 GB. The stores are readable by their owner only
+(directories 0700, files 0600).
 
 ## Participants
 
@@ -266,6 +276,7 @@ split, tables, the description of sampling, the proxy's stretches and draws).
     python scripts/build-ard30-dataset/describe_dataset.py
     python scripts/build-ard30-dataset/make_proxy_dataset.py
     python scripts/build-ard30-dataset/proxy_region_loci.py
+    bash scripts/build-ard30-dataset/rebuild_stores_without_withdrawn.sh   # 12-13 Nov 2026
 
 ## Limitations
 
