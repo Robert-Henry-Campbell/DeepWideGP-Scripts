@@ -1,0 +1,7 @@
+gate,labels,model,mean_tuning_auroc,reference_mean_tuning_auroc
+G1,simulated,"linear, tau 1 fixed, 40 epoch-equivalents",0.716565,0.713205
+G1,simulated,"linear, grid, tau and pass per trait",0.718731,0.713205
+G1,simulated,"linear, grid, tau 3 for all, end of training",0.718496,0.713205
+G2,simulated,network on top of the linear model (best of 12 trials),0.718688,0.718731
+G3,real,"linear, seven-value grid, tau 0.1 for all, end of training",0.661567,0.660715
+G3,real,"linear, seven-value grid, tau and pass per disease",0.664088,0.660715
