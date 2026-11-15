@@ -14,7 +14,9 @@ proxy: 157,279 SNPs, 40,000 training and 10,000 tuning participants. Tables are 
   - The pilot's network alone reached 0.51.
 - **G2 passes.**
   - With the network on top, the best of 12 trials reaches 0.71869, against the linear stage's
-    0.71873. So the linear model is kept.
+    0.71873.
+  - Under the rule of that day the linear model was kept. Under the rule decided on 15 November
+    (DeepWideGP 5396f44), the network on top is always the run's model, here at 0.71869.
   - On purely additive traits the network has nothing to add, and here it took nothing away.
 - **G3, linear half, passes.**
   - On the 30 diseases, the linear model at one prior variance (0.1) reaches 0.6616 against

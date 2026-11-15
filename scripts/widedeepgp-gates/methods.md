@@ -64,7 +64,9 @@ Two sets of labels:
   - bf16 encoders.
   - It started from a copy of `sim_linear_grid/linear`. The settings are the same, and the
     stage reads the copy where it lies (DeepWideGP 81ded30).
-  - The run's model is the joint one only if its mean tuning AUROC is strictly higher.
+  - Under the rule of 13 November, the run's model was the joint one only if its mean tuning
+    AUROC was strictly higher. Since 15 November (DeepWideGP 5396f44) it is always the joint
+    one, and the linear model alone is recorded as an ablation.
 - **References:**
   - **covariates alone:** a logistic regression on the twelve standardised covariates, fitted on
     the training participants by `score_snapshots.py`;
@@ -120,8 +122,8 @@ The test set is not used.
   - Every disease's choice, and the run's best checkpoint, were taken from that partial pass.
   - Found by rescoring: the chosen model scored 0.6573 on the whole tuning set, against 0.6607
     for the covariates alone.
-  - Fixed in DeepWideGP (every pass now scores the whole tuning set; `DeepWideGP/methods.md`
-    section 7), with a test.
+  - Fixed in DeepWideGP 512c755 (every pass now scores the whole tuning set;
+    `DeepWideGP/methods.md` section 7), with a test.
   - The real-label network check, which had started from that run, was stopped after four
     minutes. It has not been run.
 - **GPU test timeout.** One test of the standalone tuner timed out under the new
@@ -129,8 +131,8 @@ The test set is not used.
 
 ## Software
 
-- DeepWideGP branch `widening`: commits 9e69019, e5cebed, 81ded30, c19382a, 0edb9cb, 197741a and
-  the resume fix of 15 November.
+- DeepWideGP branch `widening`: commits 9e69019, e5cebed, 81ded30, c19382a, 0edb9cb, 197741a,
+  512c755 (the resume fix) and 5396f44 (the reporting rule).
 - Environment: `/home/robert/envs/widedeepgp`, with Python 3.10, PyTorch, PyTorch Lightning,
   Optuna and scikit-learn.
 - Seed: 1.
