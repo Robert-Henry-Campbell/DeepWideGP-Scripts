@@ -26,7 +26,13 @@ proxy: 157,279 SNPs, 40,000 training and 10,000 tuning participants. Tables are 
   - The pilot's network alone: 0.6593 (−0.0014). The pilot's clumped polygenic score: +0.0014.
   - This eighth of the genome holds little of these diseases' signal, so small gains are
     expected.
-- **G3, network half: not run.** Its first attempt was stopped (see `methods.md`, "Incidents").
+- **G3, network half, passes** (`runs/wide_gate/real_search`, 15 Nov 20:44–22:52 UTC). This is
+  one run's whole search under the final rules: the nine-value ridge grid, then 12 network trials
+  on four GPUs, of which 5 completed and 7 were pruned.
+  - The reported model, the network on top, reaches a mean tuning AUROC of 0.6640.
+  - The ridge alone (per-disease choice) reaches 0.6641.
+  - The network neither adds nor takes away anything, as on the simulated traits. The first
+    attempt, on 15 Nov, was stopped (see `methods.md`, "Incidents").
 
 ## Simulated traits (`results/simulated_traits.csv`)
 
@@ -77,7 +83,7 @@ Seven-value grid (`real_linear_grid`). For each disease the table gives:
 
 ## Not yet examined
 
-- The network on top on the real labels.
-- Any training size other than the proxy's 40,000.
+- Any training size other than the proxy's 40,000. The ladder started on 15 Nov
+  (`../widedeepgp-ladder/`).
 - The full set of SNPs.
 - The test set.
