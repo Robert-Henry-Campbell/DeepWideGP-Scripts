@@ -2,6 +2,8 @@
 
 *Results (`results.md`, `results/`) and the run folders (`runs/wide_gate`) were removed on 16 November 2026 at Robert's request; the results files are in git history (DeepWideGP-Scripts 784009f), and the gate numbers are recorded in `DeepWideGP/methods.md` section 8.*
 
+*Superseded in part, 16 November 2026 (evening): the linear PRS path these gates checked stays in the code but is off by default, and the deep arm is an end-to-end model with a per-SNP table pooled by LD block (`../widedeepgp-blocks/methods.md`). The gates remain the record of what the path and the search showed; a new gate (E0) on simulated traits precedes the new model's real runs.*
+
 *12–15 November 2026. Results in `results.md`; aggregate tables in `results/`. The model and the
 search are described in `DeepWideGP/methods.md` (sections 4.10, 5.2, 6, 7 and 8).*
 

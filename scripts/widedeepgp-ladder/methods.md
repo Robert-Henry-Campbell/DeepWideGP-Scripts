@@ -2,6 +2,8 @@
 
 *Results of the first training size and the run folders (`runs/ladder`, `runs/classic_deepgp`) were removed on 16 November 2026 at Robert's request, before code changes; the first size's summary is kept in `rung_13199_summary.md`, and the removed files are in git history (DeepWideGP-Scripts 784009f).*
 
+*Superseded, 16 November 2026 (evening): the run described below (the ridge PRS path with the network on top) is no longer the deep arm. Robert decided on an end-to-end model whose first layer is a per-SNP table pooled by LD block, with the ridge path off by default; the ladder will be rerun with it. Design and decisions: `../widedeepgp-blocks/methods.md`. This document stays as the record of the first run.*
+
 *Started 15 November 2026. The model and its search are described in `DeepWideGP/methods.md`.
 The training sizes and the comparison protocol are those of the linear polygenic-index (PGI) arm,
 `PGI/methods.md` sections 2.5, 6 and 8. This document records what is run and how. Results will

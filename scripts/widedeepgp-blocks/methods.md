@@ -1,0 +1,235 @@
+# Methods: WideDeepGP on LD blocks, trained end to end (the deep arm of the scaling study)
+
+*Status: design agreed with Robert on 16 November 2026; nothing implemented. This document is the
+durable description of the design and its decisions. The working plan with the implementation
+sequence is `/home/robert/.claude/plans/we-re-just-talking-here-crispy-toucan.md` (revision 3, 16
+November 2026). It will be brought up to the implementation as the code lands; results will go in
+`results.md`. The model's own methods document is `DeepWideGP/methods.md`, whose status note of 16
+November points here.*
+
+## 1. Why the design changed
+
+- The first training size of the ladder (13,199 participants; `../widedeepgp-ladder/`) showed the
+  network adding nothing to the in-model ridge PRS path: ridge alone 0.6634 mean tuning AUROC,
+  ridge plus network 0.6633. The simulated-trait gate had shown the same (0.7187 against 0.7187;
+  `../widedeepgp-gates/`).
+- The pilot (`../widedeepgp-pilot/`) had shown why: with one shared convolution per chromosome, a
+  32-number sinusoidal code of the SNP index and a mean over up to 105,260 tokens, the network
+  cannot address single SNPs and so cannot learn per-SNP effects (0.51 AUROC on simulated traits
+  with ceilings of 0.78 to 0.85). The ridge path held the only per-SNP parameters.
+- A ridge inside the model confuses a paper about scaling of deep learning: the headline number was
+  a ridge number, and 98% of the parameters were a linear PRS. A first redesign that fed the network
+  fixed, cross-fitted ridge scores per LD block was rejected for the same reason: the better the
+  linear model one slices, the less is left for the network, and the model stays mixed.
+- The decision (Robert, 16 November 2026): one deep network trained end to end from dosages, whose
+  first layer is a per-SNP table pooled by LD block. Blocks are a pooling choice inside the network,
+  not a linear preprocessing step. The ridge path stays in the code, off by default.
+
+## 2. The question, in Kaplan et al.'s terms
+
+The study measures how genetic prediction scales, styled after Kaplan et al. (2020): loss against
+dataset size D, model size N and compute C, with the PGI arm (`PGI/methods.md`) as the linear
+reference over the same ladder of five training sizes (13,199 to 215,872 participants, median N_eff
+3,372 to 53,908). The translation:
+
+| Kaplan | Here |
+|---|---|
+| Loss: cross-entropy in nats | Cross-entropy per disease on the population scale, as the reduction below the covariate-only model, after the shared protocol's tuning-set refit; liability-scale R² beside it; AUROC remains the per-rung comparison read-out (PGI methods 8.3). The floor is close and set by h²_SNP, so curves saturate and the asymptote is fitted |
+| D: tokens | Participants as N_eff: the five rungs. SNPs are context, not data |
+| N: non-embedding parameters | The block MLP, mixer and head. Excluded, as Kaplan excludes embeddings: the per-SNP tables and the block and chromosome identity embeddings |
+| C ≈ 6 N B S | 6 N x tokens processed (participants seen x blocks), plus the transformer's attention term, plus the first layer (6 x M x d_e per participant) and any pretraining, each reported; GPU-hours beside it. Derived afterwards from each run's records. For a fixed recipe C follows from N, D and the number of passes; the compute frontier comes from the learning curves saved along every run |
+| Context length | The number of blocks (431 to about 5,000): a one-factor side study, as Kaplan treated context and shape |
+| Second architecture | Transformer against Mamba over the same tokens |
+| Shape; transfer | Three shapes at one size at the top rung; the held-out groups (related White British, Asian, Black) as other distributions |
+
+Curve forms are the PGI arm's (methods 8.4): the Daetwyler expectation with h² and M_e free, and a
+four-parameter sigmoid in log N_eff bounded by the heritability ceiling, so each model family is
+summarised per disease by an asymptote and a knee; Kaplan's L(N, D) = [(N_c/N)^(a_N/a_D) + D_c/D]^a_D
+is fitted to each mixer's grid on the excess loss above a per-disease floor from the project's S-LDSC
+h² (`PGI/results/hm3plus/sldsc_h2.csv`). With M_e about 60,000, N_eff h²/M_e is 0.36 at the top rung
+for h² = 0.1 and about 1 for h² = 0.3, so the ladder sits before or at the knee for most diseases and
+resolves the asymptote only for the more heritable ones; the fits say so.
+
+## 3. The model
+
+For one participant, in order:
+
+1. **Per-SNP table (first layer).** Every SNP has a learned vector of d_e numbers (default 16). The
+   participant's dosage scales the vector and the scaled vectors of a block's SNPs are summed. Two
+   forms: `--snp_code dosage` (one vector per SNP, linear in dosage) and `--snp_code genotype`
+   (three vectors per SNP for 0, 1 and 2 copies, interpolated for fractional dosages: dominance per
+   SNP exact in the first layer, three times the table). With d_e = 1 and a summing mixer this is a
+   ridge PRS and weight decay on the table is its penalty, so the model contains a ridge as a special
+   case; with d_e < 30 the 30 diseases' effects at a SNP share a rank-d_e structure, a learned prior
+   on pleiotropy.
+2. **Per-block layer.** Learned identity vectors per block and per chromosome are added (the
+   position encoding: with a fixed set of a few thousand tokens, position is identity; no sinusoid),
+   then a small MLP shared by all blocks (d_e -> 4 d_e -> d, GELU).
+3. **Mixer.** One sequence of all block tokens plus the covariate token, through the existing
+   bidirectional Mamba block or a transformer encoder stack (scaled-dot-product attention, O(T)
+   memory). `--d_model` and `--e_layers` set N.
+4. **Head.** Mean over tokens, concatenated with the covariate vector, then the two-layer head: 30
+   logits. The loss (class-weighted, sampling-corrected cross-entropy of `DeepWideGP/methods.md`
+   section 5), the rotation sampler, validation on the whole tuning set and the search over learning
+   rate, weight decay and dropout (12 trials) are unchanged.
+5. **Training.** Everything by AdamW on the loss, from dosages, from scratch. The table has its own
+   parameter group: learning rate by the old wide path's rule (κ τ √B / √M) and an L2 penalty in the
+   loss scaled by 1/(N τ), τ searched. Snapshots keep the table in bfloat16, six per run. The head
+   keeps the published initialisation so gradients reach the table from the first step.
+6. **Pretraining (flag).** Masked-SNP prediction within blocks: hide 15% of a block's SNPs per
+   participant and predict each hidden genotype class from the block token through a per-SNP output
+   vector. No labels, no mixer; per rung on that rung's training rows only, once per partition; the
+   supervised model fine-tunes from it. An ablation, not the default.
+7. **Warm start (flag).** The dosage-form table initialised from the closed-form ridge of section 6.
+   An ablation.
+8. **Not modelled:** interactions between distant loci (representable, not identifiable at this N);
+   within-block interactions beyond the pooled nonlinearity. No ridge path, no offset, no annotations.
+
+The default configuration for the grid is the plain dosage table from scratch; the genotype code,
+pretraining, warm start and d_e are ablations at a few cells, and the winner on the tuning set
+becomes the headline configuration before the grid runs in full.
+
+## 4. Model sizes, and why these
+
+| Size | Transformer (d x layers) | N (non-embedding, about) | Aspect ratio d/L |
+|---|---|---|---|
+| S1 | 16 x 1 | 1e4 | 16 |
+| S2 | 32 x 2 | 2.5e4 | 16 |
+| S3 | 64 x 4 | 2e5 | 16 |
+| S4 | 128 x 6 | 1.2e6 | 21 |
+| S5 | 256 x 8 | 6.3e6 | 32 |
+
+N ≈ 12 L d² plus the block MLP and head; `n_heads` = 4 (2 at d = 16). Mamba sizes are matched to the
+same N within a factor 1.3 by depth (its block has about 7 d² parameters per layer, so about twice
+the layers at each width). The per-SNP table (20 million entries at d_e = 16) is not part of N.
+
+Justification:
+- **Range and spacing.** Five sizes at about a factor 8 each span 2.8 decades, the most the budget
+  allows (section 7). Kaplan used finer spacing over six decades; with five points, wide spacing
+  covers the range rather than resolving curvature within it.
+- **The lower end** is a near-linear model: one tiny layer over the first layer's tokens, which
+  anchors the curve where the network can add little beyond its table. The published DeepGP
+  configuration (width 32, one layer, about 11,000 parameters per encoder layer) sits at S2, so the
+  classic comparator has a size-matched point.
+- **The upper end** is set by two things. Data: 215,872 participants with 30 labels is a small
+  dataset by Kaplan's standards, and Kaplan's own overfitting law (Figure 9) says performance at a
+  fixed D stops improving and then worsens as N grows; the grid must extend past the optimum to
+  measure that bend, which is the point of fitting L(N, D) and reporting N_opt(D). S5 is there to be
+  on the far side of it. Compute: S5 as a transformer over 2,000 tokens costs about 7 hours per
+  top-rung training; the next step (38 million parameters) would cost about 40 and is excluded.
+- **Shape.** All sizes keep the aspect ratio d/L between 16 and 32, inside the region where Kaplan
+  found loss insensitive to shape (Figure 5: aspect ratios from about 10 to several hundred within a
+  few per cent); the shape check at the top rung tests that this holds here.
+
+## 5. Partitions
+
+Tokens are LD blocks in genome order. Three nested partitions: Privé's 431 HM3+ blocks (`block_id`
+in `data/reference/hm3plus_in_ukb_pgen.tsv`; 119 to 15,194 of our SNPs each, median 1,636) and two
+finer ones of about 2,000 and about 5,000 blocks, built with bigsnpr `snp_ldsplit` inside each Privé
+block on the PGI arm's LD matrices (`data/pgi/ld/bigsnpr/chr*.corr.rds`, 20,000-person panel).
+Partitions are label-free, recorded by digest in every run's `config.json`, and chosen on the tuning
+set. Following Kaplan, the block count is not an axis of the joint law: a one-factor sweep at the
+fixed model size across the rungs gives the optimal block count as a function of participants,
+B_opt(D), and the full-sample optimum as its top slice; the top-rung slice runs first and chooses
+the grid's partition. Recombination-hotspot haploblocks (about 38,000 genome-wide, about 30 HM3+
+SNPs each) are too fine for this SNP set and cohort and are not used.
+
+## 6. Linear comparators and ablation inputs: the closed-form block ridge
+
+The information-matched linear comparators at every rung (fairness rule: whatever the network
+sees, a linear model sees too), the E0 references and two ablations need a ridge over the same
+SNPs that no participant's own label shaped:
+- per rung and fold, a closed-form ridge per Privé block of the label residualised on the 12
+  covariates on standardised dosages (the rung's cached training-set SNP statistics), at three
+  penalties, from per-block X'X accumulated in one GPU pass over the store; per-SNP weights per fold;
+- five folds inside each rung's training table (fold = position mod 5 in the rung's seed-1 order;
+  balanced across diseases, nested across rungs); training participants scored by the fold that
+  excluded them, tuning, test and held-out participants by one fold model each, chosen by a seeded
+  hash of the identifier, so their scores carry the training scores' noise; the tuning and test
+  sets never enter a fit;
+- products: the cross-fitted ridge PRS per participant and disease (the simplest comparator), and
+  Privé-level block channels (431 x 90, int8, about 17 GB at the top rung, deleted after use) for a
+  logistic ridge on all channels plus covariates (per-block and cross-trait coefficients) and for the
+  frozen-first-layer ablation (stacking against end-to-end training). Both comparators are fitted on
+  the rung's training participants with hyper-parameters on the tuning set and written as per-person
+  score files in the PGI arm's format for the shared evaluation.
+
+Arrays live under `data/datasets/ard30/<rung>/blocks/`, owner-only, keyed by identifier, never in
+git, declared in a `blocks.json` beside `store.json` (never inside it: the PGI fingerprint reads
+`store.json`).
+
+## 7. Experiments and budget
+
+One seed (1). Every number before the joint test-set unlock is a tuning-set number.
+
+**Measured on 16 November 2026 (22:40 UTC; GPU 4; store warm in the page cache; machine load 79
+on 64 threads with the PGI arm running):** the existing loader with GPU decode streams the full
+1,258,200-SNP dosages at 1,288 rows/s with 8 workers at batch 256 (883 with 4 workers; no gain at
+16; 1,586 at batch 1,024, GPU peak 11 GiB). One pass over the 215,872 training rows takes about 3
+minutes; a partly cold run gave 1,045 rows/s. The first layer's arithmetic is negligible, so
+training is loader-bound: about 3 minutes per pass at the top rung, 10 seconds at the bottom, 20
+passes per training; S4 about doubles the top-rung pass, S5 as a transformer over 2,000 tokens is
+about 20 minutes per pass.
+
+| Id | What | Cells | GPU-h (rough) |
+|---|---|---|---|
+| E0 | Gate on simulated traits on real genotypes (all SNPs, bottom-rung size): additive traits plus planted per-locus heterogeneity, cross-disease sharing, dominance and a few between-block interactions; references: the cross-fitted ridge PRS, GBLUP, the block-linear comparator, the ceiling; pass criteria written first | 3 partitions x 2 mixers x 2 sizes, plus the ablation flags | 20 |
+| E3-top | Partition sweep at the top rung, size S3 | 3 x 2 mixers, 12-trial searches | 40 |
+| Abl | Genotype code; pretraining; warm start; frozen first layer; d_e in {4, 16, 64}; at S3, bottom and top rung | about 14 | 60 |
+| E1/E2 | The grid: 5 sizes x 5 rungs at the chosen partition and configuration, 12-trial searches, rungs smallest first, each mixer's S3 row and top-rung column first | 25 x 2 mixers | 200 per mixer |
+| E2b | Shape: three depth/width shapes at S3's N, top rung | 3 x 2 | 40 |
+| E3 | Partition sweep at S3 at the other four rungs | 8 x 2 | 60 |
+| Pre, Lin | Pretraining per rung and partition; the closed-form ridge per rung | 15; 5 | 20 |
+| E4, E5 | Compute envelope (tuning-set curves from every trial's validation passes; test-set envelope from the kept snapshots at the unlock); transfer to the held-out groups | scoring | small |
+| C | Classic single-disease DeepGP (I10, selected SNPs, SNP tokens; datasets built) | 5 rungs | 100 |
+
+About 750 to 850 GPU-hours in all: about ten days of packed compute on the three free GPUs, two to
+three weeks of wall time. Constraints: CPU is the shared resource (8 loader workers per training;
+the PGI arm holds 50 threads until about 30 November), so two trainings at a time until then; six
+bfloat16 snapshots per run (about 70 GB over the grid); batch 64 to 128 or activation
+checkpointing for S5 at 2,000 tokens; no training arrays on disk. Runs are launched detached from a
+frozen export of `widening`, with every flag explicit.
+
+## 8. Analysis and reporting
+
+One fitting module for both arms (`PGI/pgi/curves.py`): per disease and pooled, both curve forms per
+model family with bootstrap intervals from the PGI arm's `bootstrap_indices` (2,000 stratified
+resamples, shared indices, seed 1); asymptote and knee compared between each deep arm, each PGI
+method and the block-linear comparators; crossing points only with finite intervals; each curve
+refitted without the top rung and checked against it; Kaplan's L(N, D) per mixer; B_opt(D); N_opt(D).
+Figures at Nature sizes with CSV and legend. The per-rung read-out stays the PGI arm's paired ΔAUROC
+with its pre-specified claims. The test set is scored once, for both arms, after every choice is
+recorded here and in `DeepWideGP/methods.md`.
+
+## 9. Decisions
+
+Decided by Robert, 16 November 2026: the Kaplan framing; this end-to-end model as the deep arm; the
+ridge path off by default; no SNP-token WideDeepGP arm; the classic I10 DeepGP comparator kept;
+both mixers; one seed; model size at all five rungs; the partition as a one-factor side study; the
+30 binary diseases only, no continuous traits; the superseded plans deleted; nothing implemented yet.
+
+Settled in the plan, open to objection: d_e = 16 by default; the shared block MLP; pretraining per
+rung on that rung's rows; the plain dosage table from scratch as the default configuration until
+the ablations say otherwise; twelve trials per cell; six bfloat16 snapshots; two concurrent
+trainings while the PGI arm runs; the closed-form ridge solved at the Privé level with pseudo-fold
+scoring for its fixed-input uses.
+
+Open: the E0 pass criteria (proposed: within 0.01 AUROC of the cross-fitted ridge PRS on additive
+traits; at least half of the planted gap above it on the non-additive traits), to be written here
+before the gate runs.
+
+## 10. Out of scope
+
+Continuous traits; phased or haplotype-cluster features; attribution; a multi-task axis; learned
+partitions; within-block sequence models; batch-size (critical batch) studies; model size in SNP
+mode; any new UK Biobank data.
+
+## References
+
+Kaplan J, McCandlish S, Henighan T, et al. Scaling laws for neural language models. arXiv
+2001.08361 (2020). Daetwyler HD, Villanueva B, Woolliams JA. Accuracy of predicting the genetic
+risk of disease using a genome-wide approach. PLoS ONE 2008;3:e3395. Lee SH, Goddard ME, Wray NR,
+Visscher PM. A better coefficient of determination for genetic profile analysis. Genet Epidemiol
+2012;36:214. Privé F, Arbel J, Aschard H, Vilhjálmsson BJ. Identifying and correcting for
+misspecifications in GWAS summary statistics and polygenic scores. HGG Advances 2022 (the HapMap3+
+map and its LD blocks).
