@@ -1,5 +1,7 @@
 # Methods: pilot of the multi-disease DeepGP (WideDeepGP)
 
+*The written results (`results.md`, `results/`) were removed on 16 November 2026 at Robert's request; they are in git history (DeepWideGP-Scripts 784009f). The run folders (`runs/pilot`, `runs/pilot_sim`, `runs/dryrun`, `runs/sim_selected_tune`) are kept.*
+
 *Analysis `widedeepgp-pilot` (DeepWideGP; DPhil chapter 6). Run on 11–12 November 2026. The
 model is described in `DeepWideGP/methods.md` and the data in
 `scripts/build-ard30-dataset/methods.md`.*

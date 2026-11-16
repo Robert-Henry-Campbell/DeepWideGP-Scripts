@@ -1,6 +1,0 @@
-trait,causal_snps,heritability,enrichment,prevalence,causal_in_enriched_snps,cases_train,cases_tune,ceiling_auroc_tune,prs_z_threshold,prs_snps,prs_auroc_tune,clumped_z_threshold,clumped_snps,clumped_auroc_tune,gblup_auroc_tune,genome_wide_significant_snps
-sim20,20,0.3,1,0.2,0,7955,2041,0.783404,3.29,1505,0.660132,5.45,55,0.751006,0.671011,613
-sim200,200,0.5,1,0.2,19,7946,2045,0.850708,5.45,1576,0.686068,5.45,116,0.803534,0.721561,1576
-sim2000,2000,0.5,1,0.2,127,7897,2041,0.853038,0,157279,0.668724,3.29,660,0.710116,0.717239,1068
-sim20000,20000,0.5,1,0.2,1382,7997,2002,0.854897,0,157279,0.614674,3.29,624,0.629082,0.723503,1297
-sim200a,200,0.5,20,0.2,120,8037,1975,0.850315,5.45,2062,0.67962,5.45,115,0.814365,0.732712,2062
