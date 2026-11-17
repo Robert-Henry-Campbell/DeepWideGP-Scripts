@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Simulated liability-threshold traits on the real genotypes of a ladder rung: the E0 gate's dataset
-(methods.md, section "E0 gate"; E6 reuses it).
+(methods.md, section "E0 gate").
 
-Writes <data>/ard30/<name>/ with the source rung's participants, SNPs (all, whole chromosomes),
-covariates and tables, the 30 disease columns replaced by the traits of TRAITS; sim_truth.npz (per-person
-genetic values); sim_log.json (aggregates only: realised h2, prevalence, the ceiling and GBLUP AUROC on
-the tuning set). The test table is copied with empty trait columns: its genotypes are never read.
-Everything is owner-only.
+Writes <data>/ard30/<name>/ with the source rung's participants, SNPs (all, whole chromosomes), covariates
+and tables, the 30 disease columns replaced by the traits of TRAITS; sim_truth.npz (the draws and the
+per-person genetic values of the simulated splits); sim_log.json (aggregates only: realised h2, prevalence,
+the ceiling, the additive ceiling and GBLUP on the tuning set). The test table is copied with empty trait
+columns: its genotypes are never read. Everything is owner-only.
 
     CUDA_VISIBLE_DEVICES=3 OMP_NUM_THREADS=8 MKL_NUM_THREADS=8 python simulate_traits.py
 """
@@ -15,7 +15,6 @@ import hashlib
 import json
 import os
 import shutil
-import sys
 import time
 from pathlib import Path
 
@@ -23,25 +22,26 @@ import numpy as np
 import pandas as pd
 import torch
 
-sys.path.insert(0, os.environ.get("DEEPGP_REPO", "/mnt/sdg/robert/deepwidegp/DeepWideGP"))
+from ridge_common import MISSING, auroc, inverse_sd, standardise  # puts the model repository on sys.path
 from genostore import torch_decode as td  # noqa: E402
 from genostore.store import GenoStore  # noqa: E402
 
 DATA = "/mnt/sdg/robert/deepwidegp/data/datasets"
 BLOCKS = "/mnt/sdg/robert/deepwidegp/data/reference/hm3plus_in_ukb_pgen.tsv"
-MISSING = 255
 PREVALENCE = 0.2
 SPLITS = ("train", "val", "wb_related")           # simulated; "test" is copied with empty trait columns
-# kind: add | shared (a pair with `shared` causal SNPs in common, genetic correlation rg) | dom (an
-# orthogonal dominance code per causal SNP) | epi (centred products of `pairs` between-block pairs of
-# causal SNPs) | hetero (a causal SNP acts only in carriers of a same-block modifier's minor allele) | null
+# kind: add | shared (a pair with `shared` causal SNPs in common, genetic correlation rg) | null | a planted
+# kind: additive over `causal` SNPs plus a purely non-additive component of variance h2_planted at `planted`
+# loci, concentrated so that it is learnable at the bottom rung: dom (an orthogonal dominance code at a
+# causal SNP), epi (the centred product of two causal SNPs in different blocks), hetero (a causal SNP's
+# effect switched by a same-block modifier's minor allele)
 TRAITS = [
     dict(name="add_lo", kind="add", causal=2000, h2=0.3),
     dict(name="add_hi", kind="add", causal=20000, h2=0.5),
     dict(name=("shared_a", "shared_b"), kind="shared", causal=2000, shared=1500, rg=0.7, h2=0.3),
-    dict(name="dom", kind="dom", causal=2000, h2=0.2, h2_dom=0.1),
-    dict(name="epi", kind="epi", causal=2000, pairs=200, h2=0.2, h2_epi=0.1),
-    dict(name="hetero", kind="hetero", causal=2000, h2=0.3, modifier_maf=0.1),
+    dict(name="dom", kind="dom", causal=2000, h2=0.2, planted=20, h2_planted=0.1),
+    dict(name="epi", kind="epi", causal=2000, h2=0.2, planted=20, h2_planted=0.1),
+    dict(name="hetero", kind="hetero", causal=2000, h2=0.2, planted=20, h2_planted=0.1, modifier_maf=0.1),
     dict(name="null", kind="null", h2=0.0, prevalence=0.1),
 ]
 
@@ -50,9 +50,13 @@ def names(spec):
     return list(spec["name"]) if isinstance(spec["name"], tuple) else [spec["name"]]
 
 
-def auroc(score, y):
-    from sklearn.metrics import roc_auc_score
-    return float(roc_auc_score(y, score))
+def source(src):
+    """(store.json, the store directory, the store) of a rung; whole chromosomes only."""
+    spec = json.load(open(Path(src) / "store.json"))
+    if "regions" in spec:
+        raise ValueError(f"{src}: the source selects regions; the simulation needs whole chromosomes")
+    store_dir = spec["store"] if os.path.isabs(spec["store"]) else str((Path(src) / spec["store"]).resolve())
+    return spec, store_dir, GenoStore(store_dir)
 
 
 def read_blocks(path, store):
@@ -81,27 +85,29 @@ def draw(spec, m, block, maf, rng):
         return d
     d["causal"] = np.sort(rng.choice(m, size=k, replace=False))
     d["beta"] = rng.standard_normal(k)
-    if spec["kind"] == "dom":
-        d["gamma"] = rng.standard_normal(k)
+    if spec["kind"] == "add":
+        return d
+    d["effect"] = rng.standard_normal(spec["planted"])
     if spec["kind"] == "epi":
         perm, used, pairs = rng.permutation(d["causal"]), np.zeros(k, dtype=bool), []
         for i in range(k):
-            if used[i] or len(pairs) == spec["pairs"]:
+            if used[i] or len(pairs) == spec["planted"]:
                 continue
             j = next((j for j in range(i + 1, k) if not used[j] and block[perm[j]] != block[perm[i]]), None)
             if j is not None:
                 pairs.append((perm[i], perm[j]))
                 used[i] = used[j] = True
-        if len(pairs) < spec["pairs"]:
+        if len(pairs) < spec["planted"]:
             raise ValueError(f"only {len(pairs)} between-block pairs among the causal SNPs")
-        d["pairs"], d["omega"] = np.array(pairs, dtype=np.int64), rng.standard_normal(spec["pairs"])
+        d["pairs"] = np.array(pairs, dtype=np.int64)
+        return d
+    d["loci"] = np.sort(rng.choice(d["causal"], size=spec["planted"], replace=False))
     if spec["kind"] == "hetero":
-        members = {b: np.flatnonzero(block == b) for b in np.unique(block[d["causal"]])}
         is_causal = np.zeros(m, dtype=bool)
         is_causal[d["causal"]] = True
         mods = []
-        for s_ in d["causal"]:
-            cand = members[block[s_]]
+        for s_ in d["loci"]:
+            cand = np.flatnonzero(block == block[s_])
             ok = cand[~is_causal[cand] & (maf[cand] >= spec["modifier_maf"])]
             if not len(ok):                            # a tiny block: any other SNP of it
                 ok = cand[cand != s_]
@@ -125,8 +131,7 @@ class Geno:
 
     def z(self, idx, rows=slice(None)):
         pos = self._pos(idx)
-        q = self.q[rows][:, pos]
-        return ((q.float() * 0.01 - self.mean[pos]) * self.inv[pos]).masked_fill_(q == MISSING, 0.0)
+        return standardise(self.q[rows][:, pos], self.mean[pos], self.inv[pos])
 
     def x(self, idx):
         """Raw dosage, missing -> the training mean."""
@@ -165,19 +170,19 @@ def components(spec, d, g, dev):
     if spec["kind"] == "shared":
         return {n: {"additive": (g.zb(d[f"causal_{s}"], t(d[f"beta_{s}"])), spec["h2"])}
                 for n, s in zip(spec["name"], "ab")}
-    out = {}
-    if spec["kind"] == "hetero":
-        x = g.x(d["modifier"])
-        carrier = torch.where(g.mean[g._pos(d["modifier"])] <= 1.0, x >= 0.5, x <= 1.5).float()
-        out["modified"] = ((g.z(d["causal"]) * carrier) @ t(d["beta"]), spec["h2"])
-    else:
-        out["additive"] = (g.zb(d["causal"], t(d["beta"])), spec["h2"])
-    if spec["kind"] == "dom":
-        x = g.x(d["causal"])
-        out["dominance"] = (unit(residual(1.0 - (x - 1.0).abs(), x)) @ t(d["gamma"]), spec["h2_dom"])
-    if spec["kind"] == "epi":
+    out = {"additive": (g.zb(d["causal"], t(d["beta"])), spec["h2"])}
+    if spec["kind"] == "dom":                          # heterozygote weight 1 - |x - 1|, orthogonal to the dosage
+        x = g.x(d["loci"])
+        code = residual(1.0 - (x - 1.0).abs(), x)
+    elif spec["kind"] == "epi":                        # product of two standardised dosages, orthogonal to both
         zs, zt = g.z(d["pairs"][:, 0]), g.z(d["pairs"][:, 1])
-        out["interaction"] = (unit(residual(zs * zt, zs, zt)) @ t(d["omega"]), spec["h2_epi"])
+        code = residual(zs * zt, zs, zt)
+    elif spec["kind"] == "hetero":                     # the effect in carriers of the modifier's minor allele only
+        zs, xm = g.z(d["loci"]), g.x(d["modifier"])
+        carrier = torch.where(g.mean[g._pos(d["modifier"])] <= 1.0, xm >= 0.5, xm <= 1.5).float()
+        code = residual(zs * carrier, zs, xm)
+    if spec["kind"] in ("dom", "epi", "hetero"):
+        out["planted"] = (unit(code) @ t(d["effect"]), spec["h2_planted"])
     return {spec["name"]: out}
 
 
@@ -206,8 +211,9 @@ def gblup(k_tr, k_x, y_tr, h2):
     return k_x @ a
 
 
-def r2_in_sample(g, idx, value, chunk=8192):
-    """R² of ``value`` on a constant and the standardised dosages of the SNPs ``idx`` (tiny ridge)."""
+def additive_fit(g, idx, value, chunk=8192):
+    """Fitted values of ``value`` on a constant and the standardised dosages of the SNPs ``idx`` over all rows
+    (a tiny ridge): the best additive model of the trait's own SNPs."""
     k, dev = len(idx) + 1, g.q.device
     zz, zy = torch.zeros((k, k), dtype=torch.float64, device=dev), torch.zeros(k, dtype=torch.float64, device=dev)
     v = torch.as_tensor(value, dtype=torch.float32, device=dev)
@@ -219,8 +225,7 @@ def r2_in_sample(g, idx, value, chunk=8192):
         zy += (z.T @ v[r]).double()
     zz.diagonal().add_(1e-6 * zz.diagonal().mean())
     b = torch.linalg.solve(zz, zy).float()
-    pred = torch.cat([aug(r) @ b for r in rows])
-    return float(1.0 - (v - pred).var() / v.var())
+    return torch.cat([aug(r) @ b for r in rows]).cpu().numpy().astype(np.float64)
 
 
 def stats_path(src, rows, store):
@@ -252,22 +257,16 @@ def moments(q, chunk=2048):
     return mean, np.sqrt(np.maximum((s1 / cnt.clamp(min=1)).cpu().numpy() - mean * mean, 0.0))
 
 
-def standardise(q, mean, inv):
-    return ((q.float() * 0.01 - mean) * inv).masked_fill_(q == MISSING, 0.0)
-
-
 def build(src, out, block, traits=TRAITS, seed=1, device="cuda"):
     """The dataset of simulated traits beside its source rung; returns the aggregate log."""
     t0, src, out, dev = time.time(), Path(src), Path(out), torch.device(device)
     if (out / "sim_log.json").exists():
         raise SystemExit(f"{out} already holds a simulated dataset; remove it to rebuild")
-    spec = json.load(open(src / "store.json"))
-    store_dir = spec["store"] if os.path.isabs(spec["store"]) else str((src / spec["store"]).resolve())
-    store = GenoStore(store_dir)
+    spec, store_dir, store = source(src)
     m, n_c = sum(store.n_variants(c) for c in store.chroms), [store.n_variants(c) for c in store.chroms]
     if len(block) != m:
         raise ValueError(f"{len(block)} block ids for {m} SNPs")
-    tables = {s: pd.read_csv(src / f"samples_{s}.tsv", sep="\t", dtype=str) for s in SPLITS + ("test",)}   # copied verbatim
+    tables = {s: pd.read_csv(src / f"samples_{s}.tsv", sep="\t", dtype=str, keep_default_na=False) for s in SPLITS + ("test",)}
     row_of = {s: i for i, s in enumerate(store.samples)}
     rows = {}
     for s in SPLITS:
@@ -304,7 +303,7 @@ def build(src, out, block, traits=TRAITS, seed=1, device="cuda"):
         mu_c, sd_c = (cached[f"mean{i}"], cached[f"std{i}"]) if cached is not None else moments(q_tr)
         mean.append(mu_c); std.append(sd_c)
         mu = torch.as_tensor(mu_c, dtype=torch.float32, device=dev)
-        inv = torch.as_tensor(np.where(sd_c > 0, 1.0 / np.where(sd_c > 0, sd_c, 1.0), 0.0), dtype=torch.float32, device=dev)
+        inv = torch.as_tensor(inverse_sd(sd_c), dtype=torch.float32, device=dev)
         qc[sl["train"], pos] = q_tr[:, loc]
         z_tr = torch.empty((n["train"], n_c[i]), dtype=torch.float32, device=dev)
         for r0 in range(0, n["train"], 8192):
@@ -322,7 +321,7 @@ def build(src, out, block, traits=TRAITS, seed=1, device="cuda"):
     k_tr /= m
     k_x /= m
     mean, std = np.concatenate(mean), np.concatenate(std)
-    g = Geno(qc, cols, mean, np.where(std > 0, 1.0 / np.where(std > 0, std, 1.0), 0.0))
+    g = Geno(qc, cols, mean, inverse_sd(std))
 
     # genetic values, liabilities, labels; references on the tuning set
     log, y, gv, truth = {}, {}, {}, {}
@@ -333,14 +332,16 @@ def build(src, out, block, traits=TRAITS, seed=1, device="cuda"):
             idx = {"shared": lambda: d["causal_" + "ab"[sp["name"].index(name)]], "null": lambda: None,
                    "hetero": lambda: np.union1d(d["causal"], d["modifier"])}.get(sp["kind"], lambda: d["causal"])()
             yv, ytr = y[name][sl["val"]], torch.as_tensor(y[name][sl["train"]], dtype=torch.float64, device=dev)
+            fit = None if idx is None else additive_fit(g, idx, gv[name])
             log[name] = dict(
-                kind=sp["kind"], n_causal=int(sp.get("causal", 0)), h2_target=h2, h2_realised=float(gv[name].var() / liab.var()),
-                h2_components=shares, prevalence_target=prev, prevalence={s: float(y[name][sl[s]].mean()) for s in SPLITS},
-                cases={s: int(y[name][sl[s]].sum()) for s in SPLITS}, ceiling_auroc_val=auroc(gv[name][sl["val"]], yv),
+                kind=sp["kind"], n_causal=int(sp.get("causal", 0)), n_planted=int(sp.get("planted", 0)), h2_target=h2,
+                h2_realised=float(gv[name].var() / liab.var()), h2_components=shares, prevalence_target=prev,
+                prevalence={s: float(y[name][sl[s]].mean()) for s in SPLITS}, cases={s: int(y[name][sl[s]].sum()) for s in SPLITS},
+                ceiling_auroc_val=auroc(gv[name][sl["val"]], yv),
+                additive_ceiling_auroc_val=None if fit is None else auroc(fit[sl["val"]], yv),
                 gblup_auroc_val=auroc(gblup(k_tr, k_x, ytr, max(h2, 0.01)).cpu().numpy(), yv),
-                additive_r2_in_sample=None if idx is None else r2_in_sample(g, idx, gv[name]), n_predictors=0 if idx is None else int(len(idx)))
-            if sp["kind"] == "epi":
-                log[name]["n_pairs"] = int(len(d["pairs"]))
+                additive_r2_in_sample=None if fit is None else float(1.0 - (gv[name] - fit).var() / gv[name].var()),
+                n_predictors=0 if idx is None else int(len(idx)))
         tag = "shared" if sp["kind"] == "shared" else names(sp)[0]
         for k, a in d.items():
             truth[f"{tag}_{k}"] = a
@@ -374,7 +375,8 @@ def build(src, out, block, traits=TRAITS, seed=1, device="cuda"):
                "test_table": "identifiers and covariates copied from the source; trait columns empty; genotypes not read",
                "standardisation": {"file": cache.name, "from": "the source's cache" if cached is not None else "the training rows (computed)"},
                "gblup": "ridge on all SNPs through the training GRM, penalty (1 - h2) / h2 with h2 floored at 0.01",
-               "additive_r2_in_sample": "R2 of the genetic value on the standardised dosages of its SNPs (causal, plus modifiers)",
+               "additive_ceiling": "AUROC on the tuning rows of the in-sample additive fit of the genetic value on the standardised "
+                                   "dosages of its SNPs (causal, plus modifiers); additive_r2_in_sample is that fit's R2",
                "genetic_correlation": rg, "traits": log, "seconds": round(time.time() - t0, 1)}
     with open(out / "sim_log.json", "w") as f:
         json.dump(summary, f, indent=1)
@@ -395,11 +397,11 @@ def main(argv=None):
     a = ap.parse_args(argv)
     torch.set_num_threads(8)
     src = Path(a.data) / "ard30" / a.source
-    store = GenoStore(json.load(open(src / "store.json"))["store"])
-    summary = build(src, Path(a.data) / "ard30" / (a.name or a.source + "_sim"), read_blocks(a.blocks, store), seed=a.seed, device=a.device)
-    rows = [dict(trait=nm, kind=t["kind"], causal=t["n_causal"], h2=t["h2_target"], h2_realised=t["h2_realised"],
-                 prevalence_train=t["prevalence"]["train"], ceiling=t["ceiling_auroc_val"], gblup=t["gblup_auroc_val"],
-                 additive_r2=t["additive_r2_in_sample"]) for nm, t in summary["traits"].items()]
+    block = read_blocks(a.blocks, source(src)[2])
+    summary = build(src, Path(a.data) / "ard30" / (a.name or a.source + "_sim"), block, seed=a.seed, device=a.device)
+    rows = [dict(trait=nm, kind=t["kind"], causal=t["n_causal"], planted=t["n_planted"], h2=t["h2_target"], h2_realised=t["h2_realised"],
+                 prevalence_train=t["prevalence"]["train"], ceiling=t["ceiling_auroc_val"], additive_ceiling=t["additive_ceiling_auroc_val"],
+                 gblup=t["gblup_auroc_val"], additive_r2=t["additive_r2_in_sample"]) for nm, t in summary["traits"].items()]
     pd.set_option("display.width", 200)
     print(pd.DataFrame(rows).to_string(index=False, float_format=lambda v: f"{v:.4f}"))
     print(f"genetic correlation {summary['genetic_correlation']}; {summary['seconds']} s")
