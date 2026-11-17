@@ -3,7 +3,9 @@
 *Status: design agreed with Robert on 16 November 2026, amended on 17 November (three seeds per
 cell; AUROC as the metric family; the table width as a second size axis; the primary estimands,
 decision rules and pre-registered null of section 8; the capped-asymptote bound on the crossover and
-the E6 h² scan with its data-limitation projection); nothing implemented. This
+the E6 h² scan with its data-limitation projection; then the last open items closed: S1 stays one
+layer, no simulated genomes, packages installed as needed, every other default accepted). No
+decision is open; nothing implemented. This
 document is the durable description of the design and its decisions. The working plan with the
 implementation sequence is `/home/robert/.claude/plans/we-re-just-talking-here-crispy-toucan.md`
 (revision 4). It will be brought up to the implementation as the code lands; results will go in
@@ -105,7 +107,7 @@ set becomes the headline configuration before the grid runs in full.
 
 | Size | Transformer (d x layers) | N (non-embedding, about) | Aspect ratio d/L |
 |---|---|---|---|
-| S1 | 16 x 1 (depth under review: Kaplan excluded one-layer models from his fits) | 1e4 | 16 |
+| S1 | 16 x 1 (one layer kept deliberately: the published DeepGP has one encoder layer, so S1 and S2 bracket it and the classic comparator is compared fairly; Kaplan excluded one-layer models from his fits, so the secondary joint fits are reported with and without S1) | 1e4 | 16 |
 | S2 | 32 x 2 | 2.5e4 | 16 |
 | S3 | 64 x 4 | 2e5 | 16 |
 | S4 | 128 x 6 | 1.2e6 | 21 |
@@ -195,7 +197,8 @@ about 20 minutes per pass.
 
 | Id | What | Cells | GPU-h (rough, seeds included) |
 |---|---|---|---|
-| E0 | Gate on simulated traits on real genotypes (all SNPs, bottom-rung size): additive traits plus planted per-locus heterogeneity, cross-disease sharing, dominance and a few between-block interactions; references: the cross-fitted ridge PRS, GBLUP, the block-linear comparator, the ceiling; pass criteria written first | 3 partitions x 2 mixers x 2 sizes, plus the ablation flags | 25 |
+| E0 | Gate on simulated traits on real genotypes (all SNPs, bottom-rung size): additive traits plus planted per-locus heterogeneity, cross-disease sharing, dominance and a few between-block interactions; references: the cross-fitted ridge PRS, GBLUP, the block-linear comparator, the ceiling. Pass criteria (decided): within 0.01 AUROC of the cross-fitted ridge PRS on additive traits; at least half of the planted gap above it on the non-additive traits | 3 partitions x 2 mixers x 2 sizes, plus the ablation flags | 25 |
+| T0 | Pre-test: S1, S3 and S5 trained once each at the top rung (settings from the ablations); train-against-tuning curves inspected to see whether the mixer's overfitting bend lies inside the ladder | 3 runs | 10 |
 | E3-top | Partition sweep at the top rung, size S3 | 3 x 2 mixers, 12-trial searches | 50 |
 | Abl | Genotype code; pretraining (and the all-genotypes pretraining variant at the bottom rung); warm start; frozen first layer; at S3, bottom and top rung | about 11 | 60 |
 | E1/E2 | The grid: 5 mixer sizes x 5 rungs at the chosen partition and configuration, 12-trial searches plus two seed retrains, rungs smallest first, each mixer's S3 row and top-rung column first | 25 x 2 mixers | 230 per mixer |
@@ -205,10 +208,12 @@ about 20 minutes per pass.
 | Pre, Lin | Pretraining per rung and partition; the closed-form ridge per rung | 15; 5 | 20 |
 | E4, E5 | Compute at fixed data (tuning-set curves from every trial's validation passes; test-set curves from the kept snapshots at the unlock); transfer to the held-out groups | scoring | small |
 | E6 | h² scan on real genotypes: one phenotype table of 30 simulated traits (3 h²_50 x 3 architectures x replicates; section 8) at the five rungs; the deep envelope (S3 and the top-rung best size) with both mixers and three seeds; the linear methods on the same phenotypes through the PGI positive-control pipeline (CPU, after that arm's real stages) | about 20 deep cells | 80 to 120, plus CPU |
+| E7 | Stratification checks: a sibling-difference regression of phenotype on score difference in the related White British at the top rung (deep envelope and each PGI method); the scores regressed on birthplace coordinates and assessment centre on the tuning set | scoring only | small |
 | C | Classic single-disease DeepGP (I10, selected SNPs, SNP tokens; datasets built) | 5 rungs | 100 |
 
 About 1,050 to 1,200 GPU-hours in all (seed replicates about 130, the table axis about 90, E6 about
-100): two to three weeks of packed compute on the three free GPUs, four to five weeks of wall time. Constraints: CPU
+100, the pre-test 10): two to three weeks of packed compute on the three free GPUs, four to five
+weeks of wall time. Constraints: CPU
 is the shared resource (8 loader workers per training; the PGI arm holds 50 threads until about 30
 November), so two trainings at a time until then; about 20 bfloat16 snapshots per run for the cells
 that feed the compute figure and six elsewhere (about 100 GB over the grid); batch 64 to 128 or
@@ -342,8 +347,13 @@ claim; E6 with the data-limitation projection and its five anchoring conditions 
 the 30 binary diseases only, no continuous traits; the superseded plans deleted; nothing implemented
 yet.
 
-Chosen by me, to confirm before E6's methods are written: the non-additive allowance of the cap (1.25
-primary; 1.0 and 1.5 sensitivities) and E6's three architectures.
+Decided on 17 November 2026, closing the list: S1 stays one layer (fair comparison with the published
+DeepGP; joint fits reported with and without it); the three-size pre-test (T0) runs before the grid;
+no simulated (mosaic) genomes, so the data-rich size law and the tandem law are out of scope; the
+cap allowance 1.25 with 1.0 and 1.5 as sensitivities; E6's architectures A, B and C; the E0 pass
+criteria as stated; both stratification checks (E7); the tag `pre-blocks` on the pre-blocks code;
+packages installed as needed (statsmodels for the random-effects fits, recorded where installed);
+the project rules' wording stands.
 
 Settled in the plan, open to objection: d_e = 16 in the grid; the shared block MLP; pretraining per
 rung on that rung's rows; the plain dosage table from scratch as the default configuration until
@@ -351,18 +361,17 @@ the ablations say otherwise; twelve trials per cell; warm-up plus cosine; the sn
 concurrent trainings while the PGI arm runs; the closed-form ridge solved at the Privé level with
 pseudo-fold scoring for its fixed-input uses; the related White British as a relatedness check.
 
-Open: the data-limited point (every size overfits at 215,872 participants, so the mixer axis
-measures N_opt(D); S1's depth; a three-size pre-test at the top rung); a within-family stratification
-check on the related White British and a geography check on the tuning set; the E0 pass criteria
-(proposed: within 0.01 AUROC of the cross-fitted ridge PRS on additive traits; at least half of the
-planted gap above it on the non-additive traits), to be written here before the gate runs.
+No decision is open. What remains before the unlock is the pre-registration of section 8, written
+here as the runs settle the configuration, partition, sizes, the per-rung envelope and the eligible
+diseases.
 
 ## 10. Out of scope
 
 Continuous traits; phased or haplotype-cluster features; attribution (post hoc on the kept
 checkpoints, with path-integrated gradients); a multi-task axis; learned partitions; within-block
 sequence models; batch-size (critical batch) studies; model size in SNP mode; any new UK Biobank
-data.
+data; simulated (mosaic) genomes, and with them the data-rich size law and the tandem law
+N_opt(C), D_opt(C).
 
 ## References
 
