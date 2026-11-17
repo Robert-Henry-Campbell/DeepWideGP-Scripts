@@ -579,6 +579,140 @@ specification by `run_simulate_traits.sh` (detached, launched by the main sessio
 superseded directory aside; before the chain's `lin` stage, which needs it), and the rebuilt dataset's
 aggregates table (`sim_log.json`) is to be copied here as the bar every E0 run is read against.
 
+## 11. The closed-form block ridge as built (step 7, 17 November 2026)
+
+*Implemented in this folder: `ridge_common.py` (shared pieces), `make_folds.py`, `build_block_ridge.py`,
+`check_block_ridge.py`, `fit_block_linear.py`, `make_warm_start.py`, `test_block_ridge.py` (14 tests on a
+synthetic store). Products live under `data/datasets/ard30/<rung>/blocks/` (0700/0600) and are listed
+with digests in `<rung>/blocks.json`; aggregates go to `results/<rung>/` and `results.md`.*
+
+**Folds (`make_folds.py`).** A training participant's fold is their position in the ladder's permutation
+modulo 5, not their row number in the rung's table. PGI's `make_ladder.py` writes a rung's table as the
+parent table filtered to the first n of `default_rng(seed).permutation(sorted parent training IIDs)`, so
+the rows keep the parent's order and "row mod 5" would give one participant different folds in different
+rungs (checked on the real tables: no rung is a row-prefix of the next, and the top rung's table is not in
+permutation order either). The permutation is rebuilt from `ladder.json` (parent, seed; the top rung is its
+own parent), the rung's set is checked to be its prefix, and the fold is the position mod 5: balanced to
+within one participant (2,640 x 4 and 2,639 at the bottom rung) and nested across rungs by construction.
+Participants outside the training table (tuning, related White British, Asian, Black, and the test set
+after the unlock) get a pseudo-fold from sha256("<IID>\t1"), its first 8 bytes as a big-endian integer,
+mod 5 (3,959 to 4,060 per fold among the 20,000 tuning participants). `folds.npz` holds `iid_<split>` and
+`fold_<split>` per split. The test split is written only with `--unlock_test`, and every such call appends
+a line to `blocks/test_access.log`.
+
+**The ridge (`build_block_ridge.py`).** Per rung, for each model m in {fold 0..4, full}: Z = dosages
+standardised with the rung's cached training-set statistics (the data module's
+`snp_stats_train_<hash>.npz`, found by recomputing its hash of the training rows and regions, computed and
+cached under that name when absent so the deep runs reuse it; mean and SD over all training rows, missing
+genotypes excluded; a missing genotype becomes the mean, z = 0; a SNP without variation has z = 0 and so
+weight 0); R = Y − [1, C] B_m with B_m the least-squares coefficients of the 30 labels on the intercept and
+the 12 covariates over the model's training rows (fold f excluded; every row for the full model); per Privé
+block b, W_b = (Z_b'Z_b + λ I)^-1 Z_b'R at λ = M / h² with M = 1,258,200 and h² in {0.05, 0.15, 0.45}
+(λ = 25.2, 8.39 and 2.80 million). This is the LDpred-inf estimator: on the correlation scale
+β = (R_LD + (M / (N h²)) I)^-1 β̂ with β̂ = X'y / N, and multiplying through by N gives
+(X'X + (M / h²) I)^-1 X'y, so h² is the SNP heritability the infinitesimal prior assumes, M / h² the inverse
+prior variance per standardised SNP, and the three values bracket the S-LDSC estimates of these diseases.
+Solved per Privé block, as section 6 says. One pass over the training rows accumulates per fold g the
+grams G_g = Z_g'Z_g (float64, on the GPU) and Z_g'[Y, 1, C]; model m's gram is the sum over its folds, and
+Z'R = Z'Y − (Z'[1 C]) B_m exactly, because the residualisation is linear, so the five fold models and the
+full model come from the same pass. Per block and model one eigendecomposition (`torch.linalg.eigh`,
+float64, cuSOLVER) gives the weights at every penalty, W = Q diag(1 / (Λ + λ)) Q' Z'R. Weights are stored
+as float32 [M, 90] per model, column 3 j + p for disease j and penalty p.
+
+Memory and passes: the five per-fold grams of one chromosome's blocks need up to 40 GB (chromosome 3,
+whose largest block has 15,194 SNPs), more than the 48 GB card leaves beside the eigh workspace, so the
+blocks of a chromosome are taken in greedy groups whose grams fit `--gram_gb` (20 GB) and each group gets
+its own pass over its variant range; the store is block-major, so this reads every variant once, as one
+pass per chromosome would. Reading: `GenoStore.read_q` in batches of 512 rows, decoded in numpy on at
+most 8 threads and prefetched; standardisation and products on the GPU. Resumable per chromosome: the six
+models' weights land in `blocks/partial/weights_chr<c>_<model>.npy`, a finished chromosome is skipped on
+a restart, the per-model `ridge_weights_<model>.npy` are assembled at the end and the partial files removed.
+
+Cost (RTX 6000 Ada, FP64 at about 1.2 TFLOPS): the eigendecompositions are the fixed cost, Σ_b n_b³ =
+7.1e13 over the 431 blocks, 13.5 s for the 15,194-SNP block, about 27 minutes per rung for the six models
+and the same at every rung; the grams scale with N, about 3 minutes at 13,199 and about 48 at 215,872
+training rows. Noted, not adopted: a Cholesky factorisation per penalty would cost about a fifth of the
+eigendecomposition for three penalties (2.9 against 13.5 s for the largest block); eigh was specified and
+keeps the penalty list free to grow without a new factorisation.
+
+**Scores and channels.** Every split is scored in one pass per split, each row with its fold model
+(training rows: the model that excluded them; others: the pseudo-fold model): the block channels Z_b W_b
+(float32 [n, 431, 90]) and their sum over blocks, the PRS at every penalty. The penalty per disease is the
+one with the highest tuning AUROC of the PRS and nothing else, recorded in `ridge_manifest.json` with the
+AUROC at every penalty and in `blocks/ridge_summary.csv` (columns `label`, `auroc_val`, `chosen_h2`,
+`cases_val`, `auroc_val_h2_<h2>`; what `e0_summary.py` reads). `prs_<split>.npz`: `iid`, `labels`, `score`
+[n, 30] at the chosen penalties, `score_all` [n, 90], `fold`, and `y` (added so the checks and comparators
+need not re-read the tables). `channels_<split>.npy`: int8 [n, 431, 90], standardised per channel with the
+mean and SD over the training rows' cross-fitted channels, clipped at ±3.5 SD, stored as round(x × 36)
+(so ±126); `channels_manifest.json` carries the mean and SD per channel and the files' digests. Scoring
+order: training first (its scale), tuning next (the choice), then the related White British and the
+held-out Asian and Black groups, whose tables and store come from the sibling dataset `hm3plus_asian_black`
+(same variants, checked). The test split is scored only with `--unlock_test` and logged. Channels are
+written for every scored split (about 39 KB per participant: 4.2 GB at the bottom rung for the five splits,
+12 GB at the top), to be deleted after use as section 6 says. `blocks.json` beside `store.json` lists every
+product with its sha256; `store.json` is never touched.
+
+**Checks (`check_block_ridge.py`).** On a built rung: (1) one random block's fold-0 and full weights
+against an independent numpy float64 ridge from dosages read from the store (same statistics,
+residualisation and penalties), and its stored int8 channels against the exact block scores of the fold-0
+training rows; (2) the PRS at every penalty against the sum of the dequantised channels over all blocks on
+2,000 tuning rows, with the share of rows that have a clipped channel; (3) per disease the out-of-fold
+training AUROC against the tuning AUROC with bootstrap standard errors (200 resamples), and the pseudo-fold
+variance ratio, the tuning-set score variance over the training out-of-fold score variance, near one when
+the tuning scores carry the training scores' noise. Results in `results/<rung>/check_block_ridge.{csv,md}`.
+
+**Linear comparators (`fit_block_linear.py`).** The linear twin: per disease a logistic ridge on the
+431 × 90 cross-fitted channels (int8 / 36, standardised units) with the 12 covariates, standardised on the
+training rows, entered unpenalised, fitted on the rung's training rows and its penalty λ chosen on the
+tuning AUROC over {1e2, 1e3, 1e4, 1e5, 1e6}. The objective is Σ_i log(1 + exp(−s_i η_i)) + (λ / 2) Σ_channels
+β², minimised by L-BFGS (scipy) along the penalty path from the strongest λ, started from the covariates-only
+fit; the first version used scikit-learn's L2 logistic regression with one penalty on every coefficient,
+and on the real bottom rung that twin scored 0.52 to 0.55 AUROC while the PRS-plus-covariates comparator
+scored 0.70: a shared penalty strong enough to hold 38,790 noisy channels shrinks the 12 covariates with
+them, and their signal (0.667 AUROC alone) is lost. scikit-learn has no per-coefficient penalty and no
+offset, so the solver is written out (15 lines) and tested against scikit-learn where the two coincide
+(every coefficient penalised; nothing penalised). The plain comparator: the same solver without a penalty
+on the standardised cross-fitted PRS at the chosen penalty plus the covariates (the raw PRS is tiny, so a
+penalised fit at scikit-learn's default would shrink its coefficient to nothing; found by the test on the
+rare synthetic trait). Both are written as per-person tuning-set logits in the deep arm's npz format
+(`iid`, `labels`, `logit_population`, `y`) under `<rung>/scores/blocks_linear/{logistic_ridge,ridge_prs}/
+val_best.npz`, with aggregates in `results/<rung>/blocks_linear.csv` (the chosen λ, whether it sits at a
+grid edge, iterations, training and tuning AUROC). The covariates enter both logits so that
+`logit_population` is a population logit comparable to the deep arm's; the shared protocol's tuning-set
+refit removes the difference in any case. Cost: the feature matrix is float32 in RAM (2 GB at the bottom
+rung, 33 GB at the top) and never copied; about 55 s per disease at the bottom rung for the five penalties
+and the two reference fits.
+
+**Warm start (`make_warm_start.py`).** The dosage-form table for `--init_encoder`: the rank-d_e SVD
+U_k S_k of the full model's [M, 90] weights (every disease and penalty), split per chromosome as
+`tables.<i>` [L_i, d_e] float32, manifest kind "ridge" with `snp_code` dosage, `embed_dim`, `n_blocks`,
+`seq_len`, and the source (rung, training-set digest, weights digest, penalties, singular values, variance
+kept). `partition_digest` is computed with `genostore.datamodule.partition_digest` over the per-chromosome
+compact block ids when that function imports (it does in the current working tree of DeepWideGP);
+otherwise it is null and the source dict carries a TODO.
+
+**Tests (`test_block_ridge.py`, 14, CPU or GPU).** On a synthetic store from DeepWideGP's generator (4,000
+participants, 220 SNPs, 66 blocks of 4, 4 and 2 SNPs): the training folds follow the permutation, nest
+into a sub-rung, and a table that is not a permutation prefix is refused; the pseudo-fold is the documented
+hash, deterministic and balanced; every block's weights for three models equal `numpy.linalg.solve` on the
+same standardised data; flipping fold 2's labels leaves the fold-2 rows' scores and the fold-2 weights
+bit-identical while every other model and row moves; heritable traits predict (AUROC > 0.6 out of fold
+and on the tuning rows), the null trait does not, a causal block's channel predicts and quiet blocks do
+not; the int8 round trip (rounding within 0.5 / 36 SD, clipping exact, channels standardised on the
+training rows, their sum equal to the PRS); a zero-variance SNP gets weight 0 and a missing genotype the
+mean; the manifest hashes verify, `blocks.json` lists every product, every file is 0600 and `store.json`
+is untouched; the test split is refused without `--unlock_test` and logged with it; the build resumes per
+chromosome after an interruption and recomputes nothing when complete; a partition for other variants or
+with non-contiguous blocks is refused; the warm start is the truncated SVD; the comparators' files have the
+deep arm's format and predictive logits; the check script finds agreement.
+
+**Bottom-rung check** (hm3plus_n13199, GPU 2, 17 November 2026): see `results.md`.
+
+**Deviations from the contract.** (i) Fold = permutation position mod 5, not table row mod 5 (above).
+(ii) `prs_<split>.npz` carries `y`; `ridge_weights_full.npy` and `ridge_summary.csv` are extra products.
+(iii) `test_access.log` sits in `blocks/`. (iv) Channels are written for the held-out groups too. (v) The
+simulated E0 dataset has its traits in no held-out table: build it with `--splits train val wb_related`.
+
 ## References
 
 Kaplan J, McCandlish S, Henighan T, et al. Scaling laws for neural language models. arXiv
