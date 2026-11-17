@@ -45,6 +45,7 @@ PART = f"{ROOT}/data/reference/partitions"
 SCRIPTS = f"{ROOT}/DeepWideGP-Scripts/scripts/widedeepgp-blocks"
 CODE = os.environ.get("BLOCKS_CODE")                     # the frozen export (run_all.sh)
 MAX_GPUS, THREADS = 3, "10"
+RESERVED = {}                                             # gpu -> process that owns it alone (a comparator build needs ~45 GB)
 RUNGS = ["hm3plus_n13199", "hm3plus_n26287", "hm3plus_n53498", "hm3plus_n107743", "hm3plus"]
 TOP, BOTTOM = RUNGS[-1], RUNGS[0]
 SPLITS = ["train", "val", "wb_related", "asian", "black"]
@@ -96,9 +97,12 @@ def results(run):
 
 
 def free_gpus(limit=MAX_GPUS):
-    """Up to ``limit`` GPUs without another session's compute process, the least used by this chain first;
-    waits (five-minute polls) until there is one."""
+    """Up to ``limit`` GPUs without another session's compute process and not reserved for a comparator build,
+    the least used by this chain first; waits (five-minute polls) until there is one."""
     while True:
+        for gpu, proc in list(RESERVED.items()):
+            if proc.poll() is not None:
+                del RESERVED[gpu]
         try:
             apps = subprocess.run(["nvidia-smi", "--query-compute-apps=gpu_uuid,pid", "--format=csv,noheader"],
                                   capture_output=True, text=True, timeout=60).stdout.splitlines()
@@ -120,7 +124,8 @@ def free_gpus(limit=MAX_GPUS):
                 ours[uuid] = ours.get(uuid, 0) + 1
             else:
                 foreign.add(uuid)
-        free = [(ours.get(uuid.strip(), 0), idx.strip()) for idx, uuid in (r.split(",") for r in rows) if uuid.strip() not in foreign]
+        free = [(ours.get(uuid.strip(), 0), idx.strip()) for idx, uuid in (r.split(",") for r in rows)
+                if uuid.strip() not in foreign and idx.strip() not in RESERVED]
         if free:
             return [idx for _, idx in sorted(free)][:limit]
         log("waiting for a GPU without another session's process")
@@ -281,10 +286,11 @@ def main():
     seeds = Seeds()
     down = RUNGS[::-1]                                       # the top rung first
     # the linear comparators and warm starts: the top rung on one GPU (about a day), the other rungs in turn on a
-    # second; the no-initialisation ablation at the top rung runs while they build
+    # second, each GPU reserved for its build; the no-initialisation ablation at the top rung runs on the rest
     gpus = free_gpus()
     lin_top = spawn([PY, __file__, "lin_one", TOP], f"lin_{TOP}", gpus[0])
     lin_rest = spawn([PY, __file__, "lin_rest"], "lin_rest", gpus[-1])
+    RESERVED.update({gpus[0]: lin_top, gpus[-1]: lin_rest})   # a build fills its GPU (eigh of a 15,000-SNP block)
     abl_none = [(cell_name(m, "S3", "prive431", "dosage", "none", TOP), flags(m, "S3", "prive431", "dosage", "none", TOP), None)
                 for m in MIXERS]
     run_cells(abl_none, seeds)
