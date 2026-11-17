@@ -2,7 +2,8 @@
 
 *Status: design agreed with Robert on 16 November 2026, amended on 17 November (three seeds per
 cell; AUROC as the metric family; the table width as a second size axis; the primary estimands,
-decision rules and pre-registered null of section 8); nothing implemented. This
+decision rules and pre-registered null of section 8; the capped-asymptote bound on the crossover and
+the E6 h² scan with its data-limitation projection); nothing implemented. This
 document is the durable description of the design and its decisions. The working plan with the
 implementation sequence is `/home/robert/.claude/plans/we-re-just-talking-here-crispy-toucan.md`
 (revision 4). It will be brought up to the implementation as the code lands; results will go in
@@ -202,11 +203,12 @@ about 20 minutes per pass.
 | E2b | Shape: three depth/width shapes at S3's N, top rung | 3 x 2 | 50 |
 | E3 | Partition sweep at S3 at the other four rungs | 8 x 2 | 70 |
 | Pre, Lin | Pretraining per rung and partition; the closed-form ridge per rung | 15; 5 | 20 |
-| E4, E5 | Compute envelope (tuning-set curves from every trial's validation passes; test-set envelope from the kept snapshots at the unlock); transfer to the held-out groups | scoring | small |
+| E4, E5 | Compute at fixed data (tuning-set curves from every trial's validation passes; test-set curves from the kept snapshots at the unlock); transfer to the held-out groups | scoring | small |
+| E6 | h² scan on real genotypes: one phenotype table of 30 simulated traits (3 h²_50 x 3 architectures x replicates; section 8) at the five rungs; the deep envelope (S3 and the top-rung best size) with both mixers and three seeds; the linear methods on the same phenotypes through the PGI positive-control pipeline (CPU, after that arm's real stages) | about 20 deep cells | 80 to 120, plus CPU |
 | C | Classic single-disease DeepGP (I10, selected SNPs, SNP tokens; datasets built) | 5 rungs | 100 |
 
-About 950 to 1,050 GPU-hours in all (seed replicates about 130, the table axis about 90): some two
-weeks of packed compute on the three free GPUs, three to four weeks of wall time. Constraints: CPU
+About 1,050 to 1,200 GPU-hours in all (seed replicates about 130, the table axis about 90, E6 about
+100): two to three weeks of packed compute on the three free GPUs, four to five weeks of wall time. Constraints: CPU
 is the shared resource (8 loader workers per training; the PGI arm holds 50 threads until about 30
 November), so two trainings at a time until then; about 20 bfloat16 snapshots per run for the cells
 that feed the compute figure and six elsewhere (about 100 GB over the grid); batch 64 to 128 or
@@ -248,8 +250,44 @@ G_jr,deep − G_jr,lin. x_jr = N_eff,jr h²_50,j / M_e with h²_50,j from
   and h² perturbed within its S-LDSC standard error. Decision: "the gap grows with x" if d's interval
   excludes zero from above with seed agreement; then x* is the root of c + d log x with its interval
   and N*_j = x* M_e / h²_50,j (independent of the unit chosen for M_e). An x* inside the observed
-  range is an estimate, outside it an extrapolation reported as such; if d's interval includes zero,
-  the largest observed x at which the gap is negative is reported as a bound.
+  range is an estimate, outside it an extrapolation reported as such.
+- **The bound on N* when no crossing is seen (the capped-asymptote bound).** If d's interval includes
+  zero, or the gap is negative at every rung, N* is a lower bound built from what the ladder
+  measures. The deep envelope's pre-knee slope s_deep (P1, with its interval) fixes A/K; for any
+  asymptote A its Daetwyler curve is s_deep N / (1 + s_deep N / A), and a larger A lies above at every
+  N. The earliest crossing consistent with the data is that of the curve with A set to a declared cap
+  C_max against the theory-constrained linear curve; N_min is the lower confidence limit of that
+  crossing over the bootstrap and seed intervals of the slopes. The cap is the disease's additive
+  heritability ceiling times a non-additive allowance (1.25 primary; 1.0 and 1.5 as sensitivities,
+  reported as a curve of N_min against the cap); a larger cap gives an earlier, weaker bound, so the
+  allowance is argued from the share of non-additive variance compatible with P2's real-data curve.
+  The statement is "under a deep asymptote no greater than C_max, any crossover lies above N_min".
+  The gap's widening or narrowing inside the ladder is reported but not read as evidence for or
+  against a crossover beyond it: before the knee a higher asymptote with a later knee shows as a
+  widening gap, and a lower asymptote looks the same. "No evidence of a crossover" is never claimed;
+  the claims are "no crossing within the ladder" and the bound. The envelope's slope is used, not a
+  single size's, since larger models become usable as D grows.
+- **The data-limitation projection (the deliverable of E6).** For the additive part the participants
+  needed to reach a fraction q of the asymptote are N_q = [q/(1 − q)] M_e / h²_50 (Daetwyler; 9 M_e/h²
+  at q = 0.9: about 1.8 million at h² = 0.3, 5.4 million at 0.1, 11 million at 0.05 with M_e =
+  60,000), the standard projection (Dudbridge 2013; Chatterjee et al. 2013), and the floor for the
+  deep model's first layer. E6 supplies the correction: thirty traits simulated on the real genotypes
+  in one phenotype table (three h²_50 values x three architectures x replicates; A: additive with
+  polygenicity matched to the real diseases' LDpred2-auto and SBayesRC estimates; B: A plus 10%
+  dominance variance and pleiotropy with shared causal loci; C: B plus 5% between-block interaction
+  variance), trained at the five rungs for the deep envelope (S3 and the top-rung best size, both
+  mixers, three seeds), with the linear methods on the same phenotypes through the PGI arm's
+  positive-control pipeline. From the high-h² traits, whose x passes the knee inside the ladder, come
+  the knee ratio κ = K_deep / K_lin and the asymptote ratio with intervals; the projection for a real
+  disease is N_q,deep = κ [q/(1 − q)] M_e / h²_50,j, reported with κ's interval and against the
+  architecture; where the simulated curves cross, N*_proj = x*_sim M_e / h²_50,j, compared with P2's
+  x* where both exist. Five pre-registered conditions tie it to the data: (a) real genotypes, so M_e
+  and LD are measured; (b) h² and polygenicity matched to the real diseases' estimates; (c) the
+  non-additive share as a range, with the share compatible with P2's real-data curve stated; (d) the
+  real diseases' gaps lie on the simulated gap-against-x curve at their own x within their intervals
+  (residuals reported; on failure the projection is not made); (e) phrasing as a projection under
+  architectures consistent with the observed curves, theory as the anchor, simulation as the
+  correction.
 - **P3. The capacity the participants support.** Per rung and mixer, N_opt(D) is the mixer size with
   the highest seed-mean AUROC; d_e_opt(D) and B_opt(D) likewise. "Size matters at rung r" if the best
   size's gain over the smallest exceeds its paired interval and the largest within-size seed range;
@@ -299,8 +337,13 @@ kept; both mixers; three seeds per cell (the search once with seed 1, seeds 2 an
 choice); AUROC as the metric family for selection, comparison and the laws, cross-entropy secondary;
 the table width as a second size axis; mixer size at all five rungs; the partition as a one-factor
 side study; the primary estimands, decision rules, eligibility rule, relabelling and pre-registered
-null of section 8; the 30 binary diseases only, no continuous traits; the superseded plans deleted;
-nothing implemented yet.
+null of section 8; the capped-asymptote bound on N* in place of any "no evidence of a crossover"
+claim; E6 with the data-limitation projection and its five anchoring conditions as its deliverable;
+the 30 binary diseases only, no continuous traits; the superseded plans deleted; nothing implemented
+yet.
+
+Chosen by me, to confirm before E6's methods are written: the non-additive allowance of the cap (1.25
+primary; 1.0 and 1.5 sensitivities) and E6's three architectures.
 
 Settled in the plan, open to objection: d_e = 16 in the grid; the shared block MLP; pretraining per
 rung on that rung's rows; the plain dosage table from scratch as the default configuration until
