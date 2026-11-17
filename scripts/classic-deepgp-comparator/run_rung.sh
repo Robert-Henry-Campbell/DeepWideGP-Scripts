@@ -5,7 +5,9 @@
 # on its GWAS-selected SNPs (dataset classic_i10_n<size>, built by
 # DeepWideGP-Scripts/scripts/classic-deepgp-comparator/build_datasets.py), under the study's
 # protocol: seed 1, 12 Optuna trials over learning rate, weight decay and dropout with the
-# published settings first, early stopping on the tuning set, no test set. Runs from the same
+# published settings first, early stopping on the tuning set, no test set. Since 17 Nov 2026
+# main_multilabel.py defaults to the LD-block model with a warm-up and cosine schedule, so the
+# published SNP-token model and its constant learning rate are asked for explicitly. Runs from the same
 # frozen export of DeepWideGP's `widening` as the ladder. Rerunning continues an unfinished search.
 set -u
 rung=${1:?training size, e.g. hm3plus_n13199}
@@ -27,7 +29,8 @@ fi
 echo "$ds: starting at $(date -u +%FT%TZ) from code_$H"
 export OMP_NUM_THREADS=4 MKL_NUM_THREADS=4
 cd "$C" && /home/robert/envs/widedeepgp/bin/python main_multilabel.py --data_dir /mnt/sdg/robert/deepwidegp/data/datasets \
-    --label ard30 --rd_mode "$ds" --labels I10 --wide off --sampler shuffled --gamma 0 --batch_size 64 --accumulate 1 \
+    --label ard30 --rd_mode "$ds" --labels I10 --input_mode snps --wide off --lr_schedule constant --warmup_steps 0 \
+    --sampler shuffled --gamma 0 --batch_size 64 --accumulate 1 \
     --lr 7e-4 --l2 1e-4 --dropout 0.2 --d_model 32 --e_layers 1 --n_heads 4 --n_fcn 2 --head_hidden 256 \
     --final_pool atten --snp_embed cov --precision 32 --eval_batch_size 256 --tune_trials 12 --tune_first_given \
     --tune_gpus auto --num_workers 4 --run_dir /mnt/sdg/robert/deepwidegp/runs --experiment classic_deepgp --exp_name "$ds"
