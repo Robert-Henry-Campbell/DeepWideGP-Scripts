@@ -373,6 +373,95 @@ sequence models; batch-size (critical batch) studies; model size in SNP mode; an
 data; simulated (mosaic) genomes, and with them the data-rich size law and the tandem law
 N_opt(C), D_opt(C).
 
+## E0 gate: simulated traits on the real genotypes
+
+*Added 17 November 2026; implemented in this folder: `simulate_traits.py` (the dataset and the
+references), `e0_summary.py` (the read-out and the pass criteria), `test_e0.py`, `run_simulate_traits.sh`.*
+
+**Purpose.** Before the ablations and the grid, the block model must show on traits of known
+architecture that it matches a ridge PRS where the truth is additive and finds planted signal a ridge
+cannot represent. Simulating the traits on the real genotypes keeps the real LD, allele frequencies
+and M_e, so the references are the ones the real diseases face. E6's h² scan reuses the simulator
+with its own trait specifications.
+
+**Dataset** (`data/datasets/ard30/hm3plus_n13199_sim/`, owner-only, never in git). The bottom rung's
+participants and tables in their original row order (training 13,199; tuning 20,000; related White
+British 57,445), all 1,258,200 SNPs as whole chromosomes (no `regions` key), the covariates copied
+verbatim, the 30 disease columns replaced by the eight traits below. `store.json` keeps the rung's
+store and `pos_mode` and names the traits; `ladder.json` is copied, so the rung's fold rule (position
+mod 5 in the training table) and its training-set digest still hold. The locked test table is copied
+with its identifiers and covariates and **empty trait columns**: its genotypes are never read (the
+data module reads an empty cell as "not applicable"). Standardisation uses the rung's cached
+training-set SNP statistics (`snp_stats_train_<hash>.npz`; the data module's hash of the training rows
+and the regions), copied into the new dataset so the deep runs recompute nothing; were the cache
+absent it would be computed from the training rows with the data module's formula and saved under the
+same name. One streaming pass per chromosome reads each participant's genotypes once (decoded on the
+GPU), gathers the causal SNPs' columns and accumulates the training GRM and the training-by-tuning
+cross-GRM; about ten minutes on one GPU.
+
+**Traits** (liability-threshold model; prevalence 0.2 unless stated; no covariate effect, so every
+AUROC is genetic). Causal SNPs are drawn uniformly from all SNPs with seed 1, independently per trait;
+effects on the standardised dosage are N(0, 1); each genetic component is scaled to its stated variance
+over the simulated participants; noise brings the liability variance to 1; cases are the top
+`prevalence` share of the liability.
+
+| Trait | Causal SNPs | h² (liability) | Construction |
+|---|---|---|---|
+| add_lo | 2,000 | 0.3 | additive |
+| add_hi | 20,000 | 0.5 | additive |
+| shared_a, shared_b | 2,000 each, 1,500 in common | 0.3 each | effects at the shared SNPs correlated at ρ = 0.7 × 2000/1500 = 0.933, which gives a genetic correlation of about 0.7 under independent SNPs; the remaining 500 are each trait's own |
+| dom | 2,000 | 0.2 additive + 0.1 dominance | per causal SNP a dominance code, the heterozygote weight 1 − \|x − 1\| (the model's genotype interpolation) residualised on the dosage over the simulated participants and scaled to unit variance; dominance effects N(0, 1) |
+| epi | 2,000 | 0.2 additive + 0.1 interaction | 200 pairs of causal SNPs in different Privé blocks; the interaction code is the product of the two standardised dosages residualised on both (so it has no marginal effect), unit variance; effects N(0, 1) |
+| hetero | 2,000 | 0.3 | a causal SNP's additive effect applies only to carriers of at least one copy of the minor allele of a modifier SNP in the same Privé block (MAF ≥ 0.1 by the store's allele frequencies; any other SNP of the block if none qualifies); the additive share that results is logged, not set |
+| null | 0 | 0 | prevalence 0.1; no genetic effect |
+
+**References on the tuning set** (`sim_log.json`). The ceiling: the AUROC of the true genetic
+liability. GBLUP: the best linear predictor from all SNPs through the training-set GRM,
+(K + λI)α = y − ȳ with K = ZZ'/M over the training rows, λ = (1 − h²)/h² from the trait's liability
+h² (floored at 0.01 for the null trait), scored as K_tune,train α. The cross-fitted ridge PRS, read
+from the dataset's `blocks/ridge_summary.csv` (written by the block-ridge builder of section 6;
+columns `label`, `auroc_val`): the criteria use it because it is the information-matched linear twin
+of the first layer. Also logged per trait: the realised h² (variance of the genetic value over that of
+the liability) and the realised share of each component, prevalence and case counts per split, the
+realised genetic correlation of the shared pair, and the in-sample R² of the genetic value on a
+constant and the standardised dosages of the trait's own SNPs (causal plus modifiers), which says how
+much of the trait a perfect additive model of the right SNPs could capture (about two thirds for dom
+and epi by construction; for hetero it is set by the carrier frequencies).
+
+**Pass criteria** (decided 17 November; `e0_summary.py`, exit status 1 on any failure or a missing
+reference). Per run (a plain run's `results.json`, or a search's chosen trial through
+`best_trial_dir`), on the tuning set: the additive traits (add_lo, add_hi, shared_a, shared_b) no
+further than 0.01 AUROC below the cross-fitted ridge PRS; the planted traits (dom, epi, hetero) at
+least half of the planted gap, ceiling − ridge, above the ridge; the null trait within [0.40, 0.60].
+Every E0 run (3 partitions × 2 mixers × 2 sizes, plus the ablation flags) must pass; the read-out
+`e0_results.md` tabulates every run against the references.
+
+**What the simulation does not do, and consequences.** The realised h² differs from the target by
+the sampling of the noise variance (about ±0.005 at this n). The interacting SNPs also carry additive
+effects, so the epi gap is the interaction share alone. GBLUP's penalty uses the liability h² on 0/1
+labels: a reference, not a tuned comparator; the ridge PRS is tuned on the tuning set as the real
+comparators are. The in-sample R² is inflated by about k/n of the residual variance (2% for 2,000
+SNPs). The test rows have no simulated labels; E6, which needs them at the unlock, simulates them then
+under the unlock procedure from the same effects (every draw is in `sim_truth.npz`).
+
+**Checks** (`test_e0.py`, 27 tests on a synthetic store, CPU): realised h², prevalence and ceiling;
+the additive and dominance variance components recovered by regressing the genetic value on additive
+and orthogonal dominance codes, the interaction components likewise, the heterogeneity trait's
+non-additivity; the shared pair's genetic correlation; GBLUP against a direct solve; the saved SNP
+statistics are the file the data module looks for, with its numbers; the test split's rows are never
+read while every other row is; the log holds aggregates only; the read-out's criteria pass and fail
+each way, including a missing ridge file and a trait a run lacks. The GPU build of the synthetic
+store reproduced the CPU build (identical labels; genetic values within 6e-7).
+
+**Build record.** The bottom-rung dataset `hm3plus_n13199_sim` was built on 17 November 2026
+(launched 01:36 UTC on GPU 3 by `run_simulate_traits.sh`, detached; log
+`runs/e0/build_hm3plus_n13199_sim.log`, aggregates only, ending in its `exit` line). Its per-trait
+aggregates (realised h² and component shares, prevalence and case counts per split, the ceiling and
+GBLUP AUROC on the tuning set, the additive R², the shared pair's realised genetic correlation) are
+the dataset's `sim_log.json`; the ridge PRS reference arrives with the block-ridge builder's
+`blocks/ridge_summary.csv`, and `e0_summary.py` reads all three. The aggregates table is to be copied
+here once the ridge reference exists, as the bar every E0 run is read against.
+
 ## References
 
 Kaplan J, McCandlish S, Henighan T, et al. Scaling laws for neural language models. arXiv
