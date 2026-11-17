@@ -11,8 +11,8 @@ DeepWideGP's `widening` branch:
     grid       5 sizes x 2 mixers per rung, rung by rung from 215,872 down to 13,199 participants, on the Prive
                partition, dosage code, from the ridge warm start
     side       at the top rung: the partition sweep (ldsplit2000, ldsplit5000), the ablations (no initialisation,
-               genotype code, masked pretraining), the table width (4 and 64), the shapes; then the partition
-               sweep and the table width at the other rungs
+               genotype code, masked pretraining, the rotation sampler with the square-root class weight), the
+               table width (4 and 64), the shapes; then the partition sweep and the table width at the other rungs
     score      every finished cell's chosen model and seed retrains scored on the tuning set (--save_scores)
 
 A cell is one run of main_multilabel.py (a 12-trial search with seed 1) under runs/blocks/<name>, retrained with
@@ -23,8 +23,10 @@ share one); ten CPU threads per GPU. The recipe (Robert, 17 November, night; des
 the ridge warm start as every cell's starting point (so each rung's linear comparators are built first), the
 settings of Sigurdsson et al. 2023 fixed (learning rate 1e-4, weight decay 1e-3, dropout 0.5, batch 64, 40% input
 masking, plateau schedule, early stopping after 16 passes once 2,000 steps are done), the table's own Adam group
-(epsilon 2.5e-7, decay) and a search over the table's pace and decay only (SEARCH). Nothing with simulated
-phenotypes is queued. A finished cell
+(epsilon 2.5e-7, decay) and a search over the table's pace and decay only (SEARCH). The objective (Robert, 18 November
+2026; design document section 12, item 12): plain cross-entropy at natural prevalence, uniform shuffled batches and no
+class weight (OBJECTIVE); the rotation of disease-balanced batches with the square-root class weight, the objective of
+every run before, is one paired ablation cell at the top rung (ROTATION). Nothing with simulated phenotypes is queued. A finished cell
 (results.json) is skipped, so rerunning continues; the chain stops at the first failure. Every flag is explicit.
 Log: runs/blocks/chain.log. Started detached by run_all.sh (which freezes the code).
 """
@@ -59,6 +61,8 @@ SHAPES = {"S3w": (32, {"transformer": 16, "bimamba1": 20}), "S3d": (128, {"trans
 DEFAULTS = {"table_kappa": 0.03, "table_decay": 1.0}   # single runs (T0); the search tunes these two (SEARCH)
 SEARCH = ("table", 6)                                     # --tune_space and trials per cell; ("run", 12) tunes the network's too
 INIT = "ridge"                                            # the grid's starting point; "none" is the ablation
+OBJECTIVE = ["--sampler", "shuffled", "--gamma", "0"]     # plain cross-entropy at natural prevalence (18 November 2026)
+ROTATION = ["--sampler", "rotation", "--gamma", "0.5"]    # the objective before: disease-balanced batches, square-root weight
 
 
 def log(msg):
@@ -191,7 +195,7 @@ def init_file(init, rung, partition, embed_dim, code, gpu):
     return ensure_pretrained(TOP if init == "preall" else rung, partition, embed_dim, code, gpu)
 
 
-def flags(mixer, size, partition, code, init, rung, embed_dim=16, shape=None):
+def flags(mixer, size, partition, code, init, rung, embed_dim=16, shape=None, objective=OBJECTIVE):
     d, layers = (shape or SIZES[size])
     n_blocks = {"prive431": 431, "ldsplit2000": 2000, "ldsplit5000": 5000}[partition]
     f = ["--data_dir", DATA, "--label", "ard30", "--rd_mode", rung, "--input_mode", "blocks", "--wide", "off",
@@ -204,7 +208,8 @@ def flags(mixer, size, partition, code, init, rung, embed_dim=16, shape=None):
          "--val_min_participants", "20000", "--val_max_epoch_equiv", "1", "--min_participants", "128000",
          "--stop_patience", "16", "--stop_burnin", "2000", "--tune_min_validations", "8", "--lr_schedule", "plateau",
          "--warmup_steps", "0", "--snapshots_per_decade", "6",
-         "--snapshots_max", "20" if size == "S3" or rung == TOP else "6", "--run_dir", RUNS, "--experiment", "blocks"]
+         "--snapshots_max", "20" if size == "S3" or rung == TOP else "6", "--run_dir", RUNS, "--experiment", "blocks",
+         *objective]
     if size == "S5" and n_blocks >= 5000:
         f.append("--grad_ckpt")
     return f
@@ -338,6 +343,8 @@ def main():
     abl = [(cell_name(m, "S3", "prive431", code, init, TOP), flags(m, "S3", "prive431", code, init, TOP),
             init_file(init, TOP, "prive431", 16, code, free_gpus()[0]))
            for code, init in (("genotype", "none"), ("dosage", "pre")) for m in MIXERS]
+    abl.append((cell_name("transformer", "S3", "prive431", "dosage", INIT, TOP) + "_rotation",      # the old objective
+                flags("transformer", "S3", "prive431", "dosage", INIT, TOP, objective=ROTATION), top_init))
     run_cells(abl, seeds)
     tab = [(cell_name(m, "S3", "prive431", "dosage", INIT, TOP, e), flags(m, "S3", "prive431", "dosage", INIT, TOP, e),
             init_file(INIT, TOP, "prive431", e, "dosage", free_gpus()[0])) for e in (4, 64) for m in MIXERS]

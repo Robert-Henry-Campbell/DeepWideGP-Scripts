@@ -79,9 +79,10 @@ For one participant, in order:
    bidirectional Mamba block or a transformer encoder stack (scaled-dot-product attention, O(T)
    memory). `--d_model` and `--e_layers` set N.
 4. **Head.** Mean over tokens, concatenated with the covariate vector, then the two-layer head: 30
-   logits. The loss (class-weighted, sampling-corrected cross-entropy of `DeepWideGP/methods.md`
-   section 5), the rotation sampler, validation on the whole tuning set, selection on mean tuning
-   AUROC and the search over learning rate, weight decay and dropout (12 trials) are unchanged.
+   logits. The loss and the sampler are those of `DeepWideGP/methods.md` section 5 (since 18
+   November 2026 plain cross-entropy at natural prevalence over uniform batches; section 12, item
+   12); validation on the whole tuning set, selection on mean tuning AUROC and the search over
+   learning rate, weight decay and dropout (12 trials) are unchanged.
 5. **Training.** Everything by AdamW on the loss, from dosages, from scratch. The table has its own
    parameter group: learning rate by the old wide path's rule (κ τ √B / √M) and an L2 penalty in the
    loss scaled by 1/(N τ), τ searched; warm-up and cosine decay as the fixed recipe. Snapshots keep
@@ -268,7 +269,7 @@ about 20 minutes per pass.
 | E0 | Gate on simulated traits on real genotypes (all SNPs, bottom-rung size): additive traits plus planted per-locus heterogeneity, cross-disease sharing, dominance and a few between-block interactions; references: the cross-fitted ridge PRS, GBLUP, the block-linear comparator, the ceiling. Pass criteria (decided): within 0.01 AUROC of the cross-fitted ridge PRS on additive traits; at least half of the planted gap above it on the non-additive traits | 3 partitions x 2 mixers x 2 sizes, plus the ablation flags | 25 |
 | T0 | Pre-test: S1, S3 and S5 trained once each at the top rung (settings from the ablations); train-against-tuning curves inspected to see whether the mixer's overfitting bend lies inside the ladder | 3 runs | 10 |
 | E3-top | Partition sweep at the top rung, size S3 | 3 x 2 mixers, 12-trial searches | 50 |
-| Abl | Genotype code; pretraining (and the all-genotypes pretraining variant at the bottom rung); warm start; frozen first layer; at S3, bottom and top rung | about 11 | 60 |
+| Abl | Genotype code; pretraining (and the all-genotypes pretraining variant at the bottom rung); warm start; frozen first layer; the rotation sampler with the square-root class weight (the objective until 18 November 2026; one cell, transformer S3, top rung, section 12 item 12); at S3, bottom and top rung | about 12 | 65 |
 | E1/E2 | The grid: 5 mixer sizes x 5 rungs at the chosen partition and configuration, 12-trial searches plus two seed retrains, rungs smallest first, each mixer's S3 row and top-rung column first | 25 x 2 mixers | 230 per mixer |
 | Tab | Table width d_e in {4, 64} at S3 across the five rungs (d_e = 16 is the grid's S3 row) | 10 x 2 mixers | 90 |
 | E2b | Shape: three depth/width shapes at S3's N, top rung | 3 x 2 | 50 |
@@ -824,6 +825,25 @@ simplification, are:
    blocks-mode arms (`blocks_transformer`, `blocks_bimamba1`, five seeds each, `uniform:5` blocks) have
    their own rows in `multilabel_synthetic_seeds.csv`, and `check_synthetic_run.py` picks a run's arm from
    its configuration.
+12. **The objective: plain cross-entropy at natural prevalence (Robert, 18 November 2026).** Every run of the
+   chain draws uniform shuffled batches and uses no class weight (`--sampler shuffled --gamma 0`, explicit in
+   `flags()`; the same values are now `main_multilabel.py`'s defaults), so each disease's term is its mean
+   cross-entropy and the loss their mean over the 30 diseases: the objective of the published DeepGP, of the
+   linear comparators and of PRSformer (Dibaeinia et al., 2025). The rotation of disease-balanced batches with
+   its sampling-rate correction and the square-root class weight, the objective of every run before, including
+   the v2 and v3 reference runs, is one paired ablation cell at the top rung
+   (`transformer_S3_prive431_dosage_ridge_hm3plus_rotation`, from the warm start, beside the grid's cell of
+   the same size). Reasons (`DeepWideGP/methods.md` section 5.2): at batch 64 and prevalences of 3.7% and above
+   only 9% of uniform batches lack a case of the rarest disease, so the rotation solves a problem of the
+   published batch of 21 that no longer exists, and its correction costs a fifth of the draws (Kish); the class
+   weight departs from maximum likelihood, inflates a rare disease's loss curvature by 1.11 to 3.82 against a
+   table weight decay shared by all diseases, and pulls the warm-started table away from the population-weighted
+   ridge it starts from; the one credible deep-learning win over LDpred2 (PRSformer, 3.8 million people) used
+   plain summed cross-entropy at natural prevalence and found focal, task-uncertainty and averaged losses worse,
+   while the studies that balanced cases and controls (Kelemen et al., 2025, oversampling; Zhu et al., 2026 and
+   Yang et al., 2025, undersampling controls) either lost to the linear baseline or weakened it. The
+   no-initialisation ablation that had started under the old objective was stopped after 1.5 hours and is rerun
+   under the new one.
 
 ## References
 
