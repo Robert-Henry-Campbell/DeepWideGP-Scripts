@@ -1,7 +1,8 @@
 # Methods: WideDeepGP on LD blocks, trained end to end (the deep arm of the scaling study)
 
 *Status: design agreed with Robert on 16 November 2026, amended on 17 November (three seeds per
-cell; AUROC as the metric family; the table width as a second size axis); nothing implemented. This
+cell; AUROC as the metric family; the table width as a second size axis; the primary estimands,
+decision rules and pre-registered null of section 8); nothing implemented. This
 document is the durable description of the design and its decisions. The working plan with the
 implementation sequence is `/home/robert/.claude/plans/we-re-just-talking-here-crispy-toucan.md`
 (revision 4). It will be brought up to the implementation as the code lands; results will go in
@@ -212,23 +213,83 @@ that feed the compute figure and six elsewhere (about 100 GB over the grid); bat
 activation checkpointing for S5 at 2,000 tokens; no training arrays on disk. Runs are launched
 detached from a frozen export of `widening`, with every flag explicit.
 
-## 8. Analysis and reporting
+## 8. Primary estimands, decision rules and the pre-registered null
 
-One fitting module for both arms (`PGI/pgi/curves.py`), on the AUROC family: per disease, ΔAUROC
-over the covariate-only model with paired bootstrap intervals from the PGI arm's `bootstrap_indices`
-(2,000 stratified resamples, shared indices, seed 1); liability-scale R² from AUROC through the
-existing conversions; the Daetwyler fit on R² and the sigmoid on ΔAUROC per model family; asymptote
-and knee compared between each deep arm, each PGI method and the block-linear comparators; crossing
-points only with finite intervals; each curve refitted without the top rung and checked against it;
-parameters summarised across diseases rather than pooled curves fitted; Kaplan's L(N, D) per mixer
-on the distance to the ceiling, fixed and free; N_opt(D) from the grid, d_e_opt(D) from the table
-axis, B_opt(D) from the sweep. Means of three seeds throughout, with the seed spread beside the
-bootstrap interval. Figures at Nature sizes with CSV and legend; cross-entropy versions of the main
-tables as a secondary appendix. The per-rung read-out stays the PGI arm's paired ΔAUROC with its
-pre-specified claims. Before the unlock, this document carries the chosen configuration, partition,
-sizes, seeds, the list of every model to be scored on the test set and the diseases with an
-estimable asymptote, and the linear baselines' positive-control failures are resolved or labelled;
-the test set is then scored once, for both arms.
+What UK Biobank alone can answer: the measured range is median N_eff 3,400 to 54,000, before or at
+the knee of the Daetwyler curve for most diseases (x = N_eff h²_50 / M_e from about 0.02 to 1, M_e =
+60,000 as a unit). In that range the data identify sample efficiency, the trend of the deep-minus-
+linear gap with participants and with x, and the model size the participants support. They do not
+identify a capacity power law in model size (every size is data-limited), a compute-optimal frontier
+(data is not a free variable), or the crossover N* except as a bound, save for diseases whose curves
+bend inside the ladder. The claims below are drawn accordingly. Everything is computed on the tuning
+set until the unlock and on the test set after it; "interval" is the 95% paired bootstrap interval
+over participants with the PGI arm's shared resamples (2,000; stratified within a disease; one
+unstratified set across diseases), on the seed-mean predictions; "seed agreement" means the three
+seeds' estimates share the claimed sign; a claim passes only if its interval excludes the null value
+and the seeds agree; per-disease statements are Holm-adjusted across the 30 diseases.
+
+Notation: for disease j, rung r, family m, G_jrm = ΔAUROC over the covariate-only model through the
+shared protocol, and ΔR²_jrm the liability-scale variance explained beyond the covariates (Wray 2010,
+Lee 2012). Families: each PGI method; the best linear method per disease ("lin", PGI methods 6.3's
+strongest-linear rule); the block-linear comparators ("twin"); the deep envelope ("deep": the mixer
+size and table width pre-registered per rung from the tuning set), and each size. Gap Δ_jr =
+G_jr,deep − G_jr,lin. x_jr = N_eff,jr h²_50,j / M_e with h²_50,j from
+`PGI/results/hm3plus/sldsc_h2.csv`.
+
+- **P1. Sample efficiency and the trend of the gap.** Per disease and family, the pre-knee slope
+  s_jm of ΔR²_jrm against N_eff,jr (least squares through the origin; Daetwyler's small-x limit,
+  slope A/K); the sample-efficiency ratio ρ_j = s_j,deep / s_j,lin, pooled as a random-effects mean
+  and the median. Per disease, the slope b_j of Δ_jr against log N_eff,jr; pooled b from
+  Δ_jr = a_j + (b + u_j) log N_eff,jr + e_jr. Decision: "faster" if the pooled b's interval excludes
+  zero from above with seed agreement and the pooled ρ's interval excludes 1 from above; "slower"
+  symmetrically; "the same" otherwise.
+- **P2. The gap against the information per locus.** Δ_jr = c + d log x_jr + u_j + e_jr over the 150
+  disease-rung points, a random intercept per disease; sensitivities: a three-knot spline in log x,
+  and h² perturbed within its S-LDSC standard error. Decision: "the gap grows with x" if d's interval
+  excludes zero from above with seed agreement; then x* is the root of c + d log x with its interval
+  and N*_j = x* M_e / h²_50,j (independent of the unit chosen for M_e). An x* inside the observed
+  range is an estimate, outside it an extrapolation reported as such; if d's interval includes zero,
+  the largest observed x at which the gap is negative is reported as a bound.
+- **P3. The capacity the participants support.** Per rung and mixer, N_opt(D) is the mixer size with
+  the highest seed-mean AUROC; d_e_opt(D) and B_opt(D) likewise. "Size matters at rung r" if the best
+  size's gain over the smallest exceeds its paired interval and the largest within-size seed range;
+  "N_opt grows with D" if the argmax is non-decreasing over the rungs and the top rung's optimum beats
+  the bottom rung's optimum at the top rung by a difference passing that rule. Every grid, table-axis
+  and sweep cell's seed-mean model is scored once on the test set at the unlock (pre-registered list;
+  nothing chosen from it).
+- **P4. The deep model against its linear twin.** Per rung, G_jr,deep − G_jr,twin on the same inputs;
+  passing requires the pooled interval to exclude zero with seed agreement; read with the
+  frozen-first-layer ablation.
+- **Secondary: curve fits.** The Daetwyler form on ΔR² (the linear arms with M_e shared across
+  diseases and methods and h² free as primary, the free fit as sensitivity; the deep arm
+  descriptively); the bounded sigmoid on ΔAUROC; the Chinchilla-style E + B/D^β with β shared across
+  diseases for the deep envelope; Kaplan's joint form on the mixer grid as a description. No exponent
+  is claimed as a capacity or data exponent. Asymptotes, knees and per-disease N* only for **eligible
+  diseases**: x at the top rung ≥ 0.5 (listed from the S-LDSC table before the runs) and a
+  leave-top-rung-out refit that predicts the top rung within its interval; elsewhere N* is a bound
+  (the largest N_eff at which the gap's interval lies below zero, or "no crossing within the ladder"
+  with the top-rung gap and its interval).
+- **Relabelling.** The size axes are reported as N_opt(D) and d_e_opt(D), not as a power law in N;
+  the compute figure as "performance against compute at fixed data" (215,872 participants, batch 256,
+  data re-used over passes), not a frontier; N* as a bound except for eligible diseases and P2's x*
+  with its flag.
+- **The pre-registered null.** "Deep learning does not scale differently from linear methods at
+  biobank size" is the finding if all of: P1's pooled b interval includes zero (or the seeds disagree)
+  and the pooled ρ interval includes 1; P2's d interval includes zero; P3 finds no rung at which size
+  matters, or no growth of N_opt with D; P4 includes zero at every rung. Under the null the paper
+  reports the measured curves, the bound on N*, the ablations and the seed noise, and states that at
+  this cohort size the deep arm is as sample-efficient as its linear twin and no more. A positive
+  finding is any primary claim passing its rule; mixed outcomes are reported claim by claim; no claim
+  is promoted after the unlock.
+
+Figures at Nature sizes with CSV and legend: ΔAUROC and ΔR² against N_eff by family, per disease and
+pooled; the gap against x with the P2 fit; ΔAUROC against mixer size per rung with N_opt(D), and the
+table axis; performance against compute at fixed data; B_opt(D); the ablation table; transfer offset
+against D; cross-entropy versions of the main tables as an appendix. The per-rung read-out stays the
+PGI arm's paired ΔAUROC with its pre-specified claims. Before the unlock, this document carries the
+chosen configuration, partition, sizes, seeds, the per-rung envelope, the list of every model to be
+scored on the test set, the eligible-disease list and the rules above, and the linear baselines'
+positive-control failures are resolved or labelled; the test set is then scored once, for both arms.
 
 ## 9. Decisions
 
@@ -237,8 +298,9 @@ arm; the ridge path off by default; no SNP-token WideDeepGP arm; the classic I10
 kept; both mixers; three seeds per cell (the search once with seed 1, seeds 2 and 3 retraining its
 choice); AUROC as the metric family for selection, comparison and the laws, cross-entropy secondary;
 the table width as a second size axis; mixer size at all five rungs; the partition as a one-factor
-side study; the 30 binary diseases only, no continuous traits; the superseded plans deleted; nothing
-implemented yet.
+side study; the primary estimands, decision rules, eligibility rule, relabelling and pre-registered
+null of section 8; the 30 binary diseases only, no continuous traits; the superseded plans deleted;
+nothing implemented yet.
 
 Settled in the plan, open to objection: d_e = 16 in the grid; the shared block MLP; pretraining per
 rung on that rung's rows; the plain dosage table from scratch as the default configuration until
