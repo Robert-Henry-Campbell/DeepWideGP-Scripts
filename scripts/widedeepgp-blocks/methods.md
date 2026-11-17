@@ -144,15 +144,83 @@ layer, the size question a geneticist cares about.
 
 Tokens are LD blocks in genome order. Three nested partitions: Privé's 431 HM3+ blocks (`block_id`
 in `data/reference/hm3plus_in_ukb_pgen.tsv`; 119 to 15,194 of our SNPs each, median 1,636) and two
-finer ones of about 2,000 and about 5,000 blocks, built with bigsnpr `snp_ldsplit` inside each Privé
-block on the PGI arm's LD matrices (`data/pgi/ld/bigsnpr/chr*.corr.rds`, 20,000-person panel).
-Partitions are label-free (built from LD, genotypes only, as every LD reference is), recorded by
-digest in every run's `config.json`, and chosen on the tuning set. Following Kaplan, the block count
-is not an axis of the joint law: a one-factor sweep at the fixed model size across the rungs gives
-the optimal block count as a function of participants, B_opt(D), and the full-sample optimum as its
-top slice; the top-rung slice runs first and chooses the grid's partition. Recombination-hotspot
-haploblocks (about 38,000 genome-wide, about 30 HM3+ SNPs each) are too fine for this SNP set and
-cohort and are not used.
+finer ones of 2,000 and 5,000 blocks, built with bigsnpr `snp_ldsplit` inside each Privé block on
+the PGI arm's LD matrices (`data/pgi/ld/bigsnpr/chr*.corr.rds`, 20,000-person panel). Partitions are
+label-free (built from LD, genotypes only, as every LD reference is), recorded by digest in every
+run's `config.json`, and chosen on the tuning set. Following Kaplan, the block count is not an axis
+of the joint law: a one-factor sweep at the fixed model size across the rungs gives the optimal block
+count as a function of participants, B_opt(D), and the full-sample optimum as its top slice; the
+top-rung slice runs first and chooses the grid's partition. Recombination-hotspot haploblocks (about
+38,000 genome-wide, about 30 HM3+ SNPs each) are too fine for this SNP set and cohort and are not
+used.
+
+**Built on 17 November 2026** with `make_partition.R`, `check_partition.py` and
+`run_make_partition.sh` in this directory (tests: `test_blocks.py`). Each partition lives in
+`data/reference/partitions/<name>/`: `partition.npz` (the global 0-based block id of every variant,
+per chromosome, in store order; the store's chromosome names and variant counts; a sha256 digest of
+the variant ids), `partition.json` (aggregates and provenance), and for the two finer ones the
+builder's `blocks.tsv` and `make_partition.json`. Per-chromosome aggregates: `partitions.csv` beside
+this document.
+
+| Partition | Blocks | SNPs per block: min / q25 / median / q75 / max | Mean |
+|---|---|---|---|
+| prive431 | 431 | 119 / 631 / 1,636 / 4,010 / 15,194 | 2,919 |
+| ldsplit2000 | 2,000 | 60 / 280 / 476 / 826 / 2,314 | 629 |
+| ldsplit5000 | 5,000 | 19 / 105 / 193 / 339 / 1,108 | 252 |
+
+**5.1 Privé's blocks (`prive431`).** The `block_id` column of the reference table, read after
+checking row by row that the store's variant ids equal the table's ID column (1,258,200 rows, 22
+chromosomes). All 431 blocks of the HM3+ map keep SNPs in our set; their ids are non-decreasing in
+store order (position order within a chromosome) and every block lies within one chromosome (11 to
+34 blocks per chromosome), so the partition is Privé's, renumbered 0 to 430.
+
+**5.2 The finer partitions (`ldsplit2000`, `ldsplit5000`).** Every Privé block is split into k₁
+blocks and each of those into k₂ blocks, so the three levels nest by construction (and are checked).
+
+- *LD input.* The PGI arm's sparse correlation matrices (bigsnpr `snp_cor`, 3 cM windows, the
+  20,000-person White British LD panel, unthresholded), matched to the store's variants by rsid
+  through `chr<c>.snpinfo.tsv`: the matrices' SNP order is the store's for every chromosome and no
+  variant is absent. A variant absent from its chromosome's matrix would join the block of its
+  nearest present neighbour by position; the count is recorded in `make_partition.json` (0).
+- *How many blocks each Privé block gets.* Largest-remainder apportionment of the target (2,000,
+  then 5,000) among the 431 blocks in proportion to their SNP counts, every block getting at least
+  one (at the second level, at least its first-level count); inside a Privé block the second-level
+  count is apportioned among its first-level blocks by size in the same way. Consequences: the totals
+  are exactly 2,000 and 5,000; the mean block holds 629 and 252 SNPs; the smallest Privé blocks stay
+  whole (68 blocks of at most 385 SNPs at the 2,000 level, 20 of at most 218 SNPs at the 5,000
+  level); and sizes vary less than Privé's (interquartile ranges 280 to 826 and 105 to 339 SNPs,
+  against 631 to 4,010).
+- *Where the cuts fall.* `snp_ldsplit` (bigsnpr 1.12.21) chooses, for a given number of blocks K,
+  the contiguous split that minimises the sum of squared correlations between SNPs in different
+  blocks, counting pairs with r² ≥ `thr_r2` = 0.02 (Privé's threshold, which ignores noise-level
+  correlations; on the chr22 block we probed, 0.05 gave the same cuts and 0.01 different ones).
+  Block sizes are bounded to between a quarter and three times the mean: `min_size` = max(1,
+  ⌊m/4K⌋) and `max_size` = min(m, ⌈3m/K⌉) for a block of m SNPs, which keeps every K feasible and
+  rules out both singleton blocks carved off to make up the count and one block holding most of the
+  region. `max_K` = 2K and `max_cost` = ∞ make the function report every K from ⌈m/max_size⌉ to
+  min(2K, ⌊m/min_size⌋); we take the lowest-cost candidate at exactly K, or at the nearest K offered
+  if K were missing, which never happened (all 431 blocks at both levels have K equal to their
+  target). `max_r2` = 1 removes the function's hard cap on the squared correlation of a pair placed
+  in different blocks (default 0.3). The cap belongs to LD references, where a split pair breaks the
+  method; here blocks are pooling groups, and a partition finer than LD must cut strong pairs. With
+  the cap the range of K on offer shrinks (block 427 of chr22: 3 to 8 blocks against 2 to 10
+  without it) and in long-range-LD regions the target can fall outside it; the cost is minimised
+  either way, so cuts fall at the weakest LD within the block.
+- *What the cuts cost.* Summed over Privé blocks, the cross-block r² of the first level is 139,701,
+  of which 74% comes from the MHC block (chr6, 22.1 to 41.4 Mb, 13,398 SNPs into 18 blocks) and
+  15% from the chr8 inversion region (4.8 to 13.0 Mb, 4,966 SNPs into 7); the second level adds
+  280,336 inside the first-level blocks (MHC 30%, chr8 15%, chr11 44.7 to 69.5 Mb 9%). The median
+  Privé block costs 4.4 at the first level and 46.7 more at the second. This is the price of the
+  finer resolution in LD terms; the sweep (section 7, E3) measures what the network makes of it.
+- *Checks and run.* `check_partition.py` refuses a partition whose rows are not the store's
+  variants in store order, whose blocks are not contiguous runs or span two chromosomes, or that is
+  not nested in its parent, and writes the npz with the digest of the variant list, so a partition is
+  tied to the variants rather than to a store path (the three share one digest). The chain prive431
+  → ldsplit2000 → ldsplit5000 passed. `test_blocks.py` reproduces hand-worked splits of synthetic
+  LD clusters (cost 0 between clusters, 0.27 for the one cheapest cut inside one), the nearest-
+  neighbour rule for absent variants, resumption per chromosome and every refusal. The build took
+  6 min 51 s on 8 workers (chromosome 1 longest at 270 s); the per-chromosome work files make it
+  resumable.
 
 ## 6. Linear comparators and ablation inputs: the closed-form block ridge
 
