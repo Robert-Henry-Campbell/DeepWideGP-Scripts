@@ -2,6 +2,7 @@
 """The experiment chain of the LD-block WideDeepGP study (design document sections 5 and 7; plan section 7,
 step 10). One process runs every cell in order from a frozen export of DeepWideGP's `widening` branch:
 
+    sim        the E0 dataset of simulated traits on the bottom rung's genotypes, if it does not exist (GPU 4)
     lin        the closed-form block ridge, the linear twins and the ridge warm start, per dataset (GPU 2)
     e0         the gate: searches on the simulated traits of hm3plus_n13199_sim; e0_summary.py must pass
     t0         the pre-test: S1, S3, S5 once each at the top rung
@@ -84,29 +85,10 @@ def results(run):
 
 
 # ---- the linear comparators (Scripts step 7) -------------------------------------------------------
-def ridge_summary(ds):
-    """<dataset>/blocks/ridge_summary.csv (label, auroc_val): the cross-fitted ridge PRS's tuning AUROC, which
-    e0_summary.py reads. Aggregates only; the per-person scores stay in memory."""
-    import pandas as pd
-    from sklearn.metrics import roc_auc_score
-    d = dataset(ds)
-    out = f"{d}/blocks/ridge_summary.csv"
-    if os.path.exists(out):
-        return
-    z = np.load(f"{d}/blocks/prs_val.npz", allow_pickle=False)
-    table = pd.read_csv(f"{d}/samples_val.tsv", sep="\t", dtype={"IID": str}).set_index("IID")
-    labels = [str(x) for x in z["labels"]]
-    y = table.loc[[str(i) for i in z["iid"]], labels].to_numpy(dtype=float)
-    rows = [{"label": name, "auroc_val": float(roc_auc_score(y[:, j], z["score"][:, j])) if 0 < y[:, j].sum() < len(y) else float("nan")}
-            for j, name in enumerate(labels)]
-    pd.DataFrame(rows).to_csv(out, index=False)
-    os.chmod(out, 0o600)
-
-
 def lin(ds, gpu, splits):
     """Folds, the block ridge, the linear twins and the warm start of one dataset; skipped where done."""
     d = dataset(ds)
-    if os.path.exists(f"{d}/blocks/init_ridge_d16.pt") and os.path.exists(f"{d}/blocks/ridge_summary.csv"):
+    if os.path.exists(f"{d}/blocks/init_ridge_d16.pt") and os.path.exists(f"{d}/blocks/prs_val.npz"):
         return 0
     log(f"lin {ds}: starting on GPU {gpu}")
     for cmd in ([PY, f"{SCRIPTS}/make_folds.py", d, "--splits", *splits],
@@ -118,9 +100,23 @@ def lin(ds, gpu, splits):
         if rc:
             log(f"lin {ds}: {os.path.basename(cmd[1])} exit {rc}; chain stopped")
             return rc
-    ridge_summary(ds)
     log(f"lin {ds}: done")
     return 0
+
+
+def splits_of(ds):
+    """The splits the linear comparators score: the simulated dataset has no held-out groups."""
+    return ["train", "val", "wb_related"] if ds == SIM else ["train", "val", "wb_related", "asian", "black"]
+
+
+def simulate(gpu):
+    """The E0 dataset (simulate_traits.py), built once; the chain never overwrites one that exists."""
+    if os.path.exists(f"{dataset(SIM)}/sim_log.json"):
+        return
+    log(f"simulating the E0 traits ({SIM}) on GPU {gpu}")
+    rc = sh([PY, f"{SCRIPTS}/simulate_traits.py", "--source", BOTTOM, "--name", SIM], "simulate_traits", gpu=gpu)
+    if rc or not os.path.exists(f"{dataset(SIM)}/sim_log.json"):
+        raise RuntimeError(f"simulate_traits.py exit {rc}")
 
 
 # ---- deep cells --------------------------------------------------------------------------------------
@@ -266,11 +262,11 @@ def main():
     os.makedirs(OUT, exist_ok=True)
     log(f"chain starting from {CODE}, pid {os.getpid()}")
     seeds = Seeds()
-    held = ["train", "val", "wb_related"]
 
-    # lin: the simulated dataset's references first (E0 needs them), then the bottom rung
+    # the simulated traits, then lin: the simulated dataset's references first (E0 needs them), then the bottom rung
+    simulate(GPUS[2])
     for ds in (SIM, BOTTOM):
-        if lin(ds, GPUS[0], held):
+        if lin(ds, GPUS[0], splits_of(ds)):
             raise SystemExit(1)
 
     # e0: the gate on the simulated traits, no seed retrains
@@ -366,7 +362,7 @@ def main():
 
 def lin_rest():
     for ds in RUNGS[1:]:
-        if lin(ds, GPUS[0], ["train", "val", "wb_related"]):
+        if lin(ds, GPUS[0], splits_of(ds)):
             raise SystemExit(1)
 
 

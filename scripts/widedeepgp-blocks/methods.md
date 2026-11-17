@@ -5,12 +5,12 @@ cell; AUROC as the metric family; the table width as a second size axis; the pri
 decision rules and pre-registered null of section 8; the capped-asymptote bound on the crossover and
 the E6 h² scan with its data-limitation projection; then the last open items closed: S1 stays one
 layer, no simulated genomes, packages installed as needed, every other default accepted). No
-decision is open; nothing implemented. This
-document is the durable description of the design and its decisions. The working plan with the
-implementation sequence is `/home/robert/.claude/plans/we-re-just-talking-here-crispy-toucan.md`
-(revision 4). It will be brought up to the implementation as the code lands; results will go in
-`results.md`. The model's own methods document is `DeepWideGP/methods.md`, whose status note of 16
-November points here.*
+decision is open. **Implemented and started on 17 November 2026** (Robert: "implement the plan ...
+then launch it"; GPUs 2, 3 and 4): section 12 lists where the code departs from sections 2 to 7 and
+how the chain runs. This document is the durable description of the design and its decisions. The
+working plan is `/home/robert/.claude/plans/we-re-just-talking-here-crispy-toucan.md` (revision 7);
+results will go in `results.md`. The model's own methods document is `DeepWideGP/methods.md`, whose
+section 4.11 describes the code.*
 
 ## 1. Why the design changed
 
@@ -412,8 +412,8 @@ the table width as a second size axis; mixer size at all five rungs; the partiti
 side study; the primary estimands, decision rules, eligibility rule, relabelling and pre-registered
 null of section 8; the capped-asymptote bound on N* in place of any "no evidence of a crossover"
 claim; E6 with the data-limitation projection and its five anchoring conditions as its deliverable;
-the 30 binary diseases only, no continuous traits; the superseded plans deleted; nothing implemented
-yet.
+the 30 binary diseases only, no continuous traits; the superseded plans deleted (implemented on 17
+November: section 12).
 
 Decided on 17 November 2026, closing the list: S1 stays one layer (fair comparison with the published
 DeepGP; joint fits reported with and without it); the three-size pre-test (T0) runs before the grid;
@@ -712,6 +712,88 @@ deep arm's format and predictive logits; the check script finds agreement.
 (ii) `prs_<split>.npz` carries `y`; `ridge_weights_full.npy` and `ridge_summary.csv` are extra products.
 (iii) `test_access.log` sits in `blocks/`. (iv) Channels are written for the held-out groups too. (v) The
 simulated E0 dataset has its traits in no held-out table: build it with `--splits train val wb_related`.
+
+## 12. Implementation (17 November 2026) and where it departs from sections 2 to 7
+
+Everything of plan section 7 was built on 17 November 2026 (DeepWideGP `widening` from dcf07e1, tag
+`pre-blocks` = 7dc184d marking the code before; this repository's `scripts/widedeepgp-blocks/` and
+`scripts/widedeepgp-scaling/`; PGI `pgi/curves.py`) and the chain was started the same day
+(`chains/run_all.sh`, records under `/mnt/sdg/robert/deepwidegp/runs/blocks/`). DeepWideGP `methods.md`
+section 4.11 describes the code; the departures from the design above, each an engineering finding or a
+simplification, are:
+
+1. **A linear readout of the table is part of the network.** Beside the mixer's reading of the block
+   tokens, the model adds to its logits a linear map (`readout`, embed_dim to 30 outputs, no bias) of the
+   table summed over all SNPs: logit_j = deep_j + Σ_e a_je Σ_s x_s T_se. Section 2 had no such term and said
+   the model contains a ridge "with the rest of the network summing tokens"; in the code the containment is
+   exact and tested (the head's last layer at zero gives a rank-embed_dim ridge PRS). The reason is
+   empirical: without the readout, a table that starts at zero takes its gradient direction from a random,
+   fast-moving downstream network and its Adam steps never accumulate. On a synthetic dataset (4,000
+   participants, 132 SNPs, six liability-threshold traits with two shared and two trait-specific causal SNPs
+   each), the model without the readout learned the three shared-SNP traits only after a phase transition
+   at the fourth pass and never the two trait-specific ones (tuning AUROC 0.48 and 0.39 against ceilings
+   0.78 and 0.97, in every variant tried: a tenth of the table learning rate, two mixer layers, shuffled
+   batches without class weights, a narrower head); with one SNP per block it learned nothing at all. With
+   the readout every trait is learned after one pass (final mean AUROC over the heritable traits 0.83
+   against a ceiling of 0.86; the published SNP-token model reached 0.75 on the same data), and block
+   size and the table's learning rate stop mattering. The model remains one network trained end to end
+   from dosages with nothing fitted outside it; the readout is a residual connection from the first layer
+   to the output, and the deep path learns what the linear reading of the table misses. Kaplan's N counts
+   the readout with the head.
+2. **One flag for the first layer's initialisation.** `--init_encoder <file>` loads tables (and whatever
+   else the file holds) from a file whose manifest says what it is (`kind` masked or ridge), with
+   `--freeze_encoder` to keep the loaded parameters fixed; the flags `--pretrain` and `--init_table` of
+   sections 2 and 7 do not exist. `pretrain_blocks.py` writes the masked-pretraining file (each SNP of a
+   participant hidden independently with probability 0.15, not "15% of a block's SNPs"; the hidden
+   genotype class is predicted from the block's hidden layer through a per-SNP output vector of embed_dim
+   entries); `make_warm_start.py` writes the ridge warm start (sections 6 and 11).
+3. **One partition per file**; no `--block_level`. `--partition` names `partition.npz` or its folder
+   (section 5's layout) or `uniform:<k>` for tests. The nesting of the finer partitions is checked when
+   they are built (`check_partition.py --parent`), not at run time.
+4. **The table's penalty is an L2 term in the loss**, Σ T² / (2 N τ), with τ = `--table_var` searched
+   log-uniformly in [0.01, 100] beside the learning rate, weight decay and dropout, and the table's own
+   learning rate κ τ √B / √M (`--table_kappa` 0.1) without the class-weight factor of the old PRS path.
+   AdamW's weight decay applies to the rest of the network only.
+5. **The frozen cross-fitted first layer** (the stacking ablation of section 7's table) is not
+   implemented: a model reading cross-fitted block scores needs a third input mode. The question it
+   served, whether end-to-end training adds anything over a linear use of the same inputs, is answered by
+   P4 against the linear twin (`fit_block_linear.py`), and by the ridge warm start with and without
+   `--freeze_encoder` (the frozen in-sample ridge first layer is leaky and is not run).
+6. **FLOPs are derived, not logged.** `config.json` holds the counts (`blocks` section: partition and
+   digest, tokens, parameters by module, embedding and non-embedding totals, the init file's digest);
+   `scripts/widedeepgp-scaling/compute.py` turns them and the participants seen into compute.
+7. **Model sizes as pinned by the chain:** transformer S1 to S5 = d 16 × 1, 32 × 2, 64 × 4, 128 × 6, 256 × 8
+   (mixer parameters 3.3k, 25k, 200k, 1.19M, 6.32M); Mamba depths 1, 2, 6, 9, 14 at the same widths (3.9k,
+   22k, 209k, 1.09M, 6.25M, each within a factor 1.3); heads of width 4 d (n_heads d / 16) so that the head
+   does not outweigh a small mixer; batch 256 (128 × 2 for S4 and S5 at 2,000 or more tokens, where the S5
+   transformer at 2,001 tokens peaks at 22.8 GiB and the matched Mamba at 25.2 GiB in bf16 at batch 128);
+   20 epoch-equivalents at most, four validations per epoch-equivalent, patience 8, warm-up 200 steps and a
+   cosine; 20 snapshots for the S3 row and the top-rung column, six elsewhere.
+8. **The chain** (`chains/run_chain.py`, started detached by `chains/run_all.sh` from a frozen export of
+   `widening`) runs, in order: the linear comparators of the simulated dataset and the bottom rung
+   (`make_folds.py`, `build_block_ridge.py`, `check_block_ridge.py`, `fit_block_linear.py`,
+   `make_warm_start.py`; the other rungs follow in the background on GPU 2); E0 as 18 searches on
+   `hm3plus_n13199_sim` (3 partitions × 2 mixers × S1 and S3, and at S3 on prive431 the genotype code, the
+   masked pretraining and the ridge warm start), then `e0_summary.py` as the gate (the chain stops on a
+   failure); T0 (S1, S3, S5 once each at the top rung); E3-top, which chooses the grid's partition by the
+   seed-mean tuning AUROC averaged over the two mixers; the ablations at S3 at the bottom and top rung
+   (dosage, genotype code, pretraining, the top rung's pretraining applied at the bottom rung, ridge warm
+   start), which choose the headline code and initialisation by the same rule at the top rung; the grid
+   (S3 row and top-rung column first, then the rest, rungs smallest first); the table axis (embed_dim 4
+   and 64); the shapes (32 × 16 and 128 × 1 for the transformer, 32 × 20 and 128 × 2 for Mamba); the
+   partition sweep at the other rungs; and the scoring of every chosen model and seed retrain on the
+   tuning set with per-person scores saved under the data directory. Every search uses GPUs 2, 3 and 4
+   (`--tune_gpus 2,3,4`; Robert, 17 November: exactly these three); the seed-2 and seed-3 retrains run on
+   GPUs 2 and 3 beside the next search. Decisions are written to `runs/blocks/decisions.json` with the
+   numbers they rest on; a finished cell is skipped, so rerunning continues. Not in the chain: the
+   scoring of the held-out groups (E5; they live in a second genotype store, so a scoring step that
+   reuses a run's standardisation is needed), the h² scan (E6; its trait table is not simulated yet), the
+   stratification checks (E7) and the test unlock, which is never automatic.
+9. **Synthetic-store bands.** The smoke run of `scripts/multilabel_synthetic.sh` keeps the published
+   SNP-token model (it now passes `--input_mode snps --lr_schedule constant --warmup_steps 0`); the
+   blocks-mode arms (`blocks_transformer`, `blocks_bimamba1`, five seeds each, `uniform:5` blocks) have
+   their own rows in `multilabel_synthetic_seeds.csv`, and `check_synthetic_run.py` picks a run's arm from
+   its configuration.
 
 ## References
 
