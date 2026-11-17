@@ -29,7 +29,8 @@ fi
 echo "$ds: starting at $(date -u +%FT%TZ) from code_$H"
 export OMP_NUM_THREADS=4 MKL_NUM_THREADS=4
 cd "$C" && /home/robert/envs/widedeepgp/bin/python main_multilabel.py --data_dir /mnt/sdg/robert/deepwidegp/data/datasets \
-    --label ard30 --rd_mode "$ds" --labels I10 --input_mode snps --wide off --lr_schedule constant --warmup_steps 0 \
+    --label ard30 --rd_mode "$ds" --labels I10 --input_mode snps --input_mask 0 --wide off --lr_schedule constant --warmup_steps 0 \
+    --stop_patience 8 --stop_burnin 0 \
     --sampler shuffled --gamma 0 --batch_size 64 --accumulate 1 \
     --lr 7e-4 --l2 1e-4 --dropout 0.2 --d_model 32 --e_layers 1 --n_heads 4 --n_fcn 2 --head_hidden 256 \
     --final_pool atten --snp_embed cov --precision 32 --eval_batch_size 256 --tune_trials 12 --tune_first_given \

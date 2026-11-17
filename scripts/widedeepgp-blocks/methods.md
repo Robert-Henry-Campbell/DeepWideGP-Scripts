@@ -804,7 +804,22 @@ simplification, are:
    early stopping waits sixteen (`--stop_patience 16`), 20 epoch-equivalents at most. Searches take two
    to three times longer. The programme (item 8) is otherwise unchanged; it starts again from the top
    rung, and the first question it answers is whether these settings let the first layer learn at all.
-10. **Synthetic-store bands.** The smoke run of `scripts/multilabel_synthetic.sh` keeps the published
+10. **The recipe of Sigurdsson et al. (2023) and the ridge warm start as the default (17 November, night).**
+    Robert asked for the ridge warm start to be every run's starting point and for the training recipe of the
+    closest published system, the genome-local networks of Sigurdsson et al. (2023, Nucleic Acids Research; UK
+    Biobank, 383,000 training participants, 662,000 SNPs): learning rate 10⁻⁴, weight decay 10⁻³, dropout 0.5,
+    batch 64, 40% of the SNPs set to missing on every training step (`--input_mask 0.4`, the rest rescaled), a
+    plateau schedule (×0.2 after ten validation passes without improvement), early stopping after sixteen
+    passes once a burn-in of 2,000 optimiser steps is done. These are `main_multilabel.py`'s defaults now and
+    the chain passes them explicitly; the table's epsilon was re-measured under them (3.3 × 10⁻⁸ per null
+    entry at batch 64 with masking; `--table_eps` 2.5 × 10⁻⁷). The per-cell search tunes the table's pace and
+    decay only (`--tune_space table`, six trials); the network's settings stand at the recipe's. In the chain
+    the comparators of every rung are built first (the top rung on one GPU, the others in turn on a second)
+    because every cell starts from its rung's warm start; the no-initialisation ablation at S3 runs meanwhile,
+    and "no initialisation" replaces "ridge" in the ablation list. DeepWideGP `methods.md` section 4.11 carries
+    the sources and the four other systems read for comparison (Bellot et al. 2018; van Hilten et al. 2021;
+    G2PT and SNPBERT, preprints), none of which trains a free table over a million SNPs.
+11. **Synthetic-store bands.** The smoke run of `scripts/multilabel_synthetic.sh` keeps the published
    SNP-token model (it now passes `--input_mode snps --lr_schedule constant --warmup_steps 0`); the
    blocks-mode arms (`blocks_transformer`, `blocks_bimamba1`, five seeds each, `uniform:5` blocks) have
    their own rows in `multilabel_synthetic_seeds.csv`, and `check_synthetic_run.py` picks a run's arm from

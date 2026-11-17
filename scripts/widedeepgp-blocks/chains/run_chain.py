@@ -4,14 +4,14 @@ document sections 5, 7 and 12; Robert, 17 November 2026: no simulated-trait gate
 the rungs; the side studies after the grid). One process runs every cell in order from a frozen export of
 DeepWideGP's `widening` branch:
 
-    lin        the closed-form block ridge, the linear twins and the ridge warm start per rung, top rung first,
-               in the background on GPU 2 (the comparators and the warm start; nothing waits for them but the
-               ablations)
-    t0         the pre-test: S1, S3, S5 once each at the top rung, fixed settings, one per GPU
+    lin        the closed-form block ridge, the linear twins and the ridge warm start per rung: the top rung on
+               one GPU (about a day), the other rungs one after another on a second; T0 and a rung's grid wait
+               for that rung's warm start, and the no-initialisation ablation runs meanwhile
+    t0         the pre-test: S1, S3, S5 once each at the top rung, fixed settings, from the ridge warm start
     grid       5 sizes x 2 mixers per rung, rung by rung from 215,872 down to 13,199 participants, on the Prive
-               partition with the plain configuration (dosage code, no initialisation)
-    side       at the top rung: the partition sweep (ldsplit2000, ldsplit5000), the ablations (genotype code,
-               masked pretraining, ridge warm start), the table width (4 and 64), the shapes; then the partition
+               partition, dosage code, from the ridge warm start
+    side       at the top rung: the partition sweep (ldsplit2000, ldsplit5000), the ablations (no initialisation,
+               genotype code, masked pretraining), the table width (4 and 64), the shapes; then the partition
                sweep and the table width at the other rungs
     score      every finished cell's chosen model and seed retrains scored on the tuning set (--save_scores)
 
@@ -19,9 +19,12 @@ A cell is one run of main_multilabel.py (a 12-trial search with seed 1) under ru
 seeds 2 and 3 at the chosen settings (--tune_trials 0); the retrains of three cells run together in waves that
 fill the GPUs. GPUs (Robert, 17 November 2026): as many as are free, up to three, picked at every launch; a GPU
 with another session's process is not free, one with only this chain's processes is (the linear comparators
-share one); ten CPU threads per GPU. Table settings of 17 November (evening): the table's own Adam group with
-epsilon 1e-7 and weight decay, its pace kappa and decay searched (0.01 to 0.03, 0.3 to 3), the pruner held off
-for eight validation passes, early stopping after sixteen. Nothing with simulated phenotypes is queued. A finished cell
+share one); ten CPU threads per GPU. The recipe (Robert, 17 November, night; design document section 12, item 11):
+the ridge warm start as every cell's starting point (so each rung's linear comparators are built first), the
+settings of Sigurdsson et al. 2023 fixed (learning rate 1e-4, weight decay 1e-3, dropout 0.5, batch 64, 40% input
+masking, plateau schedule, early stopping after 16 passes once 2,000 steps are done), the table's own Adam group
+(epsilon 2.5e-7, decay) and a search over the table's pace and decay only (SEARCH). Nothing with simulated
+phenotypes is queued. A finished cell
 (results.json) is skipped, so rerunning continues; the chain stops at the first failure. Every flag is explicit.
 Log: runs/blocks/chain.log. Started detached by run_all.sh (which freezes the code).
 """
@@ -52,7 +55,9 @@ SIZES = {"S1": (16, {"transformer": 1, "bimamba1": 1}), "S2": (32, {"transformer
          "S3": (64, {"transformer": 4, "bimamba1": 6}), "S4": (128, {"transformer": 6, "bimamba1": 9}),
          "S5": (256, {"transformer": 8, "bimamba1": 14})}
 SHAPES = {"S3w": (32, {"transformer": 16, "bimamba1": 20}), "S3d": (128, {"transformer": 1, "bimamba1": 2})}
-DEFAULTS = {"lr": 1e-3, "l2": 1e-4, "dropout": 0.1, "table_kappa": 0.03, "table_decay": 1.0}   # single runs (T0); searches tune these
+DEFAULTS = {"table_kappa": 0.03, "table_decay": 1.0}   # single runs (T0); the search tunes these two (SEARCH)
+SEARCH = ("table", 6)                                     # --tune_space and trials per cell; ("run", 12) tunes the network's too
+INIT = "ridge"                                            # the grid's starting point; "none" is the ablation
 
 
 def log(msg):
@@ -128,7 +133,7 @@ def lin(ds, gpu, splits):
     d = dataset(ds)
     if os.path.exists(f"{d}/blocks/init_ridge_d16.pt") and os.path.exists(f"{d}/blocks/prs_val.npz"):
         return 0
-    log(f"lin {ds}: starting on GPU {gpu}")
+    log(f"lin {ds}: starting on GPU {gpu if gpu is not None else os.environ.get('CUDA_VISIBLE_DEVICES', '?')}")
     for cmd in ([PY, f"{SCRIPTS}/make_folds.py", d, "--splits", *splits],
                 [PY, f"{SCRIPTS}/build_block_ridge.py", d, "--partition", f"{PART}/prive431", "--splits", *splits, "--threads", THREADS],
                 [PY, f"{SCRIPTS}/check_block_ridge.py", d, "--partition", f"{PART}/prive431"],
@@ -184,23 +189,23 @@ def init_file(init, rung, partition, embed_dim, code, gpu):
 def flags(mixer, size, partition, code, init, rung, embed_dim=16, shape=None):
     d, layers = (shape or SIZES[size])
     n_blocks = {"prive431": 431, "ldsplit2000": 2000, "ldsplit5000": 5000}[partition]
-    big = size in ("S4", "S5") and n_blocks >= 2000               # the attention term: batch 128 x 2 (test_ml_blocks_gpu)
     f = ["--data_dir", DATA, "--label", "ard30", "--rd_mode", rung, "--input_mode", "blocks", "--wide", "off",
          "--partition", f"{PART}/{partition}", "--mixer", mixer, "--snp_code", code, "--embed_dim", str(embed_dim),
-         "--table_eps", "1e-7", "--d_model", str(d), "--e_layers", str(layers[mixer]), "--n_heads", str(max(1, d // 16)),
+         "--table_eps", "2.5e-7", "--d_model", str(d), "--e_layers", str(layers[mixer]), "--n_heads", str(max(1, d // 16)),
          "--head_hidden", str(4 * d), "--n_fcn", "2", "--final_pool", "mean", "--snp_stats", "train",
-         "--batch_size", "128" if big else "256", "--accumulate", "2" if big else "1", "--eval_batch_size", "1024",
+         "--lr", "1e-4", "--l2", "1e-3", "--dropout", "0.5", "--input_mask", "0.4",
+         "--batch_size", "64", "--accumulate", "1", "--eval_batch_size", "1024",
          "--precision", "bf16", "--num_workers", THREADS, "--max_epoch_equiv", "20", "--val_per_epoch", "4",
          "--val_min_participants", "20000", "--val_max_epoch_equiv", "1", "--min_participants", "128000",
-         "--stop_patience", "16", "--tune_min_validations", "8", "--lr_schedule", "cosine", "--warmup_steps", "200",
-         "--snapshots_per_decade", "6",
+         "--stop_patience", "16", "--stop_burnin", "2000", "--tune_min_validations", "8", "--lr_schedule", "plateau",
+         "--warmup_steps", "0", "--snapshots_per_decade", "6",
          "--snapshots_max", "20" if size == "S3" or rung == TOP else "6", "--run_dir", RUNS, "--experiment", "blocks"]
     if size == "S5" and n_blocks >= 5000:
         f.append("--grad_ckpt")
     return f
 
 
-def search(name, base_flags, init_path, trials=12):
+def search(name, base_flags, init_path, trials=SEARCH[1]):
     """One cell's seed-1 search on the three GPUs; returns its results.json."""
     run = f"{OUT}/{name}"
     r = results(run)
@@ -208,7 +213,7 @@ def search(name, base_flags, init_path, trials=12):
         return r
     log(f"cell {name}: search starting")
     cmd = [PY, "main_multilabel.py", *base_flags, "--exp_name", name, "--seed", "1", "--tune_trials", str(trials),
-           "--tune_gpus", ",".join(free_gpus())]
+           "--tune_space", SEARCH[0], "--tune_gpus", ",".join(free_gpus())]
     if init_path:
         cmd += ["--init_encoder", init_path]
     rc = sh(cmd, f"cell_{name}", cwd=CODE)
@@ -231,8 +236,7 @@ class Seeds:
         for seed in (2, 3):
             if results(f"{OUT}/{name}_seed{seed}") is None:
                 cmd = [PY, "main_multilabel.py", *base_flags, "--exp_name", f"{name}_seed{seed}", "--seed", str(seed),
-                       "--tune_trials", "0", "--lr", str(p["lr"]), "--l2", str(p["l2"]), "--dropout", str(p["dropout"]),
-                       "--table_kappa", str(p["table_kappa"]), "--table_decay", str(p["table_decay"])] + \
+                       "--tune_trials", "0", *[a for k, v in p.items() for a in (f"--{k}", str(v))]] + \
                       (["--init_encoder", init_path] if init_path else [])
                 self.pending.append((f"{name}_seed{seed}", cmd))
         if len(self.pending) >= 6:
@@ -276,9 +280,20 @@ def main():
     log(f"chain starting from {CODE}, pid {os.getpid()}")
     seeds = Seeds()
     down = RUNGS[::-1]                                       # the top rung first
-    lin_proc = spawn([PY, __file__, "lin_all"], "lin_all", free_gpus()[0])
+    # the linear comparators and warm starts: the top rung on one GPU (about a day), the other rungs in turn on a
+    # second; the no-initialisation ablation at the top rung runs while they build
+    gpus = free_gpus()
+    lin_top = spawn([PY, __file__, "lin_one", TOP], f"lin_{TOP}", gpus[0])
+    lin_rest = spawn([PY, __file__, "lin_rest"], "lin_rest", gpus[-1])
+    abl_none = [(cell_name(m, "S3", "prive431", "dosage", "none", TOP), flags(m, "S3", "prive431", "dosage", "none", TOP), None)
+                for m in MIXERS]
+    run_cells(abl_none, seeds)
+    if lin_top.wait():
+        raise RuntimeError(f"the linear comparators of {TOP} failed; see logs/lin_{TOP}.log")
+    log(f"lin {TOP}: comparators and warm start ready")
+    top_init = init_file(INIT, TOP, "prive431", 16, "dosage", free_gpus()[0])
 
-    # t0: three single runs at the top rung, the slowest first, in waves over the free GPUs
+    # t0: three single runs at the top rung from the warm start, the slowest first, in waves over the free GPUs
     todo = [z for z in ("S5", "S3", "S1") if results(f"{OUT}/t0_transformer_{z}_prive431_{TOP}") is None]
     while todo:
         gpus = free_gpus()
@@ -286,8 +301,9 @@ def main():
         procs = []
         for size, gpu in zip(wave, gpus):
             name = f"t0_transformer_{size}_prive431_{TOP}"
-            cmd = [PY, "main_multilabel.py", *flags("transformer", size, "prive431", "dosage", "none", TOP), "--exp_name", name,
-                   "--seed", "1", "--tune_trials", "0", *[a for k, v in DEFAULTS.items() for a in (f"--{k}", str(v))]]
+            cmd = [PY, "main_multilabel.py", *flags("transformer", size, "prive431", "dosage", INIT, TOP), "--exp_name", name,
+                   "--seed", "1", "--tune_trials", "0", *[a for k, v in DEFAULTS.items() for a in (f"--{k}", str(v))],
+                   "--init_encoder", top_init]
             procs.append((name, spawn(cmd, f"cell_{name}", gpu, cwd=CODE)))
         for name, proc in procs:
             if proc.wait() or results(f"{OUT}/{name}") is None:
@@ -295,33 +311,43 @@ def main():
             log(f"t0 {name}: tuning AUROC {results(f'{OUT}/{name}')['best_val_auroc_mean']:.4f}")
 
     # grid: rung by rung from the top, five sizes x two mixers, the plain configuration on the Prive partition
-    grid = [(cell_name(m, s, "prive431", "dosage", "none", r), flags(m, s, "prive431", "dosage", "none", r), None)
-            for r in down for s in SIZES for m in MIXERS]
-    run_cells(grid, seeds)
+    for r in down:                                           # a rung's cells wait for its warm start
+        if r != TOP:
+            while not os.path.exists(f"{dataset(r)}/blocks/init_ridge_d16.pt"):
+                if lin_rest.poll() is not None:
+                    raise RuntimeError("the other rungs' linear comparators failed; see logs/lin_rest.log")
+                time.sleep(300)
+        init_r = init_file(INIT, r, "prive431", 16, "dosage", free_gpus()[0])
+        run_cells([(cell_name(m, z, "prive431", "dosage", INIT, r), flags(m, z, "prive431", "dosage", INIT, r), init_r)
+                   for z in SIZES for m in MIXERS], seeds)
+    if lin_rest.wait():
+        raise RuntimeError("the other rungs' linear comparators failed; see logs/lin_rest.log")
 
     # side studies at the top rung: partition sweep, ablations (the warm start needs the top rung's ridge), table width, shapes
-    side = [(cell_name(m, "S3", p, "dosage", "none", TOP), flags(m, "S3", p, "dosage", "none", TOP), None)
+    # side studies at the top rung: the partition sweep (the warm-start table is per SNP, so the same file serves every
+    # partition), the remaining ablations, the table width, the shapes
+    side = [(cell_name(m, "S3", p, "dosage", INIT, TOP), flags(m, "S3", p, "dosage", INIT, TOP), top_init)
             for p in PARTITIONS if p != "prive431" for m in MIXERS]
     run_cells(side, seeds)
-    if lin_proc.wait():
-        raise RuntimeError("the linear comparators failed; see logs/lin_all.log")
     abl = [(cell_name(m, "S3", "prive431", code, init, TOP), flags(m, "S3", "prive431", code, init, TOP),
             init_file(init, TOP, "prive431", 16, code, free_gpus()[0]))
-           for code, init in (("genotype", "none"), ("dosage", "pre"), ("dosage", "ridge")) for m in MIXERS]
+           for code, init in (("genotype", "none"), ("dosage", "pre")) for m in MIXERS]
     run_cells(abl, seeds)
-    tab = [(cell_name(m, "S3", "prive431", "dosage", "none", TOP, e), flags(m, "S3", "prive431", "dosage", "none", TOP, e), None)
-           for e in (4, 64) for m in MIXERS]
+    tab = [(cell_name(m, "S3", "prive431", "dosage", INIT, TOP, e), flags(m, "S3", "prive431", "dosage", INIT, TOP, e),
+            init_file(INIT, TOP, "prive431", e, "dosage", free_gpus()[0])) for e in (4, 64) for m in MIXERS]
     run_cells(tab, seeds)
-    e2b = [(cell_name(m, k, "prive431", "dosage", "none", TOP), flags(m, "S3", "prive431", "dosage", "none", TOP, shape=SHAPES[k]), None)
+    e2b = [(cell_name(m, k, "prive431", "dosage", INIT, TOP), flags(m, "S3", "prive431", "dosage", INIT, TOP, shape=SHAPES[k]), top_init)
            for k in SHAPES for m in MIXERS]
     run_cells(e2b, seeds)
 
     # the partition sweep and the table width at the other rungs, top-down
-    rest = [(cell_name(m, "S3", p, "dosage", "none", r), flags(m, "S3", p, "dosage", "none", r), None)
-            for r in down[1:] for p in PARTITIONS if p != "prive431" for m in MIXERS]
-    rest += [(cell_name(m, "S3", "prive431", "dosage", "none", r, e), flags(m, "S3", "prive431", "dosage", "none", r, e), None)
-             for r in down[1:] for e in (4, 64) for m in MIXERS]
-    run_cells(rest, seeds)
+    for r in down[1:]:
+        init_r = init_file(INIT, r, "prive431", 16, "dosage", free_gpus()[0])
+        rest = [(cell_name(m, "S3", p, "dosage", INIT, r), flags(m, "S3", p, "dosage", INIT, r), init_r)
+                for p in PARTITIONS if p != "prive431" for m in MIXERS]
+        rest += [(cell_name(m, "S3", "prive431", "dosage", INIT, r, e), flags(m, "S3", "prive431", "dosage", INIT, r, e),
+                  init_file(INIT, r, "prive431", e, "dosage", free_gpus()[0])) for e in (4, 64) for m in MIXERS]
+        run_cells(rest, seeds)
 
     # score: the chosen model of every cell and its seed retrains on the tuning set, scores saved under data/
     for name in sorted(os.listdir(OUT)):
@@ -338,14 +364,21 @@ def main():
     log("chain finished: every queued cell done; E5 (held-out groups), E6 (h2 scan) and E7 are separate steps")
 
 
-def lin_all():
-    for ds in RUNGS[::-1]:
-        if lin(ds, free_gpus()[0], SPLITS):
+def lin_one(ds):
+    if lin(ds, None, SPLITS):                               # the GPU is the one this process was given
+        raise SystemExit(1)
+
+
+def lin_rest():
+    for ds in RUNGS[::-1][1:]:
+        if lin(ds, None, SPLITS):
             raise SystemExit(1)
 
 
 if __name__ == "__main__":
-    if sys.argv[1:] == ["lin_all"]:
-        lin_all()
+    if sys.argv[1:2] == ["lin_one"]:
+        lin_one(sys.argv[2])
+    elif sys.argv[1:] == ["lin_rest"]:
+        lin_rest()
     else:
         main()
