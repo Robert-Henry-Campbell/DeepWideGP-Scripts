@@ -748,10 +748,10 @@ simplification, are:
 3. **One partition per file**; no `--block_level`. `--partition` names `partition.npz` or its folder
    (section 5's layout) or `uniform:<k>` for tests. The nesting of the finer partitions is checked when
    they are built (`check_partition.py --parent`), not at run time.
-4. **The table's penalty is an L2 term in the loss**, Σ T² / (2 N τ), with τ = `--table_var` searched
+4. **The table's penalty was first an L2 term in the loss**, Σ T² / (2 N τ), with τ = `--table_var` searched
    log-uniformly in [0.01, 100] beside the learning rate, weight decay and dropout, and the table's own
    learning rate κ τ √B / √M (`--table_kappa` 0.1) without the class-weight factor of the old PRS path.
-   AdamW's weight decay applies to the rest of the network only.
+   Superseded the same evening by item 9.
 5. **The frozen cross-fitted first layer** (the stacking ablation of section 7's table) is not
    implemented: a model reading cross-fitted block scores needs a third input mode. The question it
    served, whether end-to-end training adds anything over a linear use of the same inputs, is answered by
@@ -787,7 +787,24 @@ simplification, are:
    scoring of the held-out groups (E5; they live in a second genotype store, so a scoring step that
    reuses a run's standardisation is needed), the h² scan (E6; its trait table is not simulated yet), the
    stratification checks (E7) and the test unlock, which is never automatic.
-9. **Synthetic-store bands.** The smoke run of `scripts/multilabel_synthetic.sh` keeps the published
+9. **The table's optimiser, after the first top-rung runs (17 November 2026, evening).** The first
+   relaunch (no simulated gate; T0 then the grid from the top rung down) showed the plain model learning
+   nothing from the genotypes at 215,872 participants: S1, S3 and S5 once each at fixed settings reached
+   mean tuning AUROCs of 0.6610, 0.6624 and 0.6619 against 0.6627 for the covariates alone, and a 12-trial
+   search at S1 0.6626. The curves showed Adam noise accumulating in the table at S3 (training loss rising
+   after the first third of the run while the table's sum of squares grew a thousandfold) and the table's
+   gradient collapsing at S5. Robert had the chain stopped and its outputs wiped, and three changes
+   applied before a second relaunch: (a) the table's AdamW group gets a large epsilon (`--table_eps`
+   10⁻⁷, about eight times the measured per-entry gradient of a null SNP, 1.3 × 10⁻⁸ at batch 256 on the
+   top rung) and a per-step weight decay (`--table_decay`, default 1, searched 0.3 to 3) in place of the
+   loss penalty Σ T² / (2 N τ) of item 4, which was far too weak; `--table_var` no longer exists;
+   (b) each block's sum is divided by the square root of its SNP count, so the first layer's output has
+   one scale whatever the partition; (c) the table's pace κ drops to 0.03 and is searched (0.01 to 0.03)
+   in place of τ, the pruner may act only after eight validation passes (`--tune_min_validations 8`) and
+   early stopping waits sixteen (`--stop_patience 16`), 20 epoch-equivalents at most. Searches take two
+   to three times longer. The programme (item 8) is otherwise unchanged; it starts again from the top
+   rung, and the first question it answers is whether these settings let the first layer learn at all.
+10. **Synthetic-store bands.** The smoke run of `scripts/multilabel_synthetic.sh` keeps the published
    SNP-token model (it now passes `--input_mode snps --lr_schedule constant --warmup_steps 0`); the
    blocks-mode arms (`blocks_transformer`, `blocks_bimamba1`, five seeds each, `uniform:5` blocks) have
    their own rows in `multilabel_synthetic_seeds.csv`, and `check_synthetic_run.py` picks a run's arm from

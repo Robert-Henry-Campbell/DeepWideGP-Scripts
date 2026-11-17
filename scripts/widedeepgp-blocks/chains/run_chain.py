@@ -19,7 +19,9 @@ A cell is one run of main_multilabel.py (a 12-trial search with seed 1) under ru
 seeds 2 and 3 at the chosen settings (--tune_trials 0); the retrains of three cells run together in waves that
 fill the GPUs. GPUs (Robert, 17 November 2026): as many as are free, up to three, picked at every launch; a GPU
 with another session's process is not free, one with only this chain's processes is (the linear comparators
-share one); ten CPU threads per GPU. Nothing with simulated phenotypes is queued. A finished cell
+share one); ten CPU threads per GPU. Table settings of 17 November (evening): the table's own Adam group with
+epsilon 1e-7 and weight decay, its pace kappa and decay searched (0.01 to 0.03, 0.3 to 3), the pruner held off
+for eight validation passes, early stopping after sixteen. Nothing with simulated phenotypes is queued. A finished cell
 (results.json) is skipped, so rerunning continues; the chain stops at the first failure. Every flag is explicit.
 Log: runs/blocks/chain.log. Started detached by run_all.sh (which freezes the code).
 """
@@ -50,7 +52,7 @@ SIZES = {"S1": (16, {"transformer": 1, "bimamba1": 1}), "S2": (32, {"transformer
          "S3": (64, {"transformer": 4, "bimamba1": 6}), "S4": (128, {"transformer": 6, "bimamba1": 9}),
          "S5": (256, {"transformer": 8, "bimamba1": 14})}
 SHAPES = {"S3w": (32, {"transformer": 16, "bimamba1": 20}), "S3d": (128, {"transformer": 1, "bimamba1": 2})}
-DEFAULTS = {"lr": 1e-3, "l2": 1e-4, "dropout": 0.1, "table_var": 1.0}    # single runs (T0); searches tune these
+DEFAULTS = {"lr": 1e-3, "l2": 1e-4, "dropout": 0.1, "table_kappa": 0.03, "table_decay": 1.0}   # single runs (T0); searches tune these
 
 
 def log(msg):
@@ -185,12 +187,13 @@ def flags(mixer, size, partition, code, init, rung, embed_dim=16, shape=None):
     big = size in ("S4", "S5") and n_blocks >= 2000               # the attention term: batch 128 x 2 (test_ml_blocks_gpu)
     f = ["--data_dir", DATA, "--label", "ard30", "--rd_mode", rung, "--input_mode", "blocks", "--wide", "off",
          "--partition", f"{PART}/{partition}", "--mixer", mixer, "--snp_code", code, "--embed_dim", str(embed_dim),
-         "--table_kappa", "0.1", "--d_model", str(d), "--e_layers", str(layers[mixer]), "--n_heads", str(max(1, d // 16)),
+         "--table_eps", "1e-7", "--d_model", str(d), "--e_layers", str(layers[mixer]), "--n_heads", str(max(1, d // 16)),
          "--head_hidden", str(4 * d), "--n_fcn", "2", "--final_pool", "mean", "--snp_stats", "train",
          "--batch_size", "128" if big else "256", "--accumulate", "2" if big else "1", "--eval_batch_size", "1024",
          "--precision", "bf16", "--num_workers", THREADS, "--max_epoch_equiv", "20", "--val_per_epoch", "4",
          "--val_min_participants", "20000", "--val_max_epoch_equiv", "1", "--min_participants", "128000",
-         "--stop_patience", "8", "--lr_schedule", "cosine", "--warmup_steps", "200", "--snapshots_per_decade", "6",
+         "--stop_patience", "16", "--tune_min_validations", "8", "--lr_schedule", "cosine", "--warmup_steps", "200",
+         "--snapshots_per_decade", "6",
          "--snapshots_max", "20" if size == "S3" or rung == TOP else "6", "--run_dir", RUNS, "--experiment", "blocks"]
     if size == "S5" and n_blocks >= 5000:
         f.append("--grad_ckpt")
@@ -229,7 +232,8 @@ class Seeds:
             if results(f"{OUT}/{name}_seed{seed}") is None:
                 cmd = [PY, "main_multilabel.py", *base_flags, "--exp_name", f"{name}_seed{seed}", "--seed", str(seed),
                        "--tune_trials", "0", "--lr", str(p["lr"]), "--l2", str(p["l2"]), "--dropout", str(p["dropout"]),
-                       "--table_var", str(p["table_var"])] + (["--init_encoder", init_path] if init_path else [])
+                       "--table_kappa", str(p["table_kappa"]), "--table_decay", str(p["table_decay"])] + \
+                      (["--init_encoder", init_path] if init_path else [])
                 self.pending.append((f"{name}_seed{seed}", cmd))
         if len(self.pending) >= 6:
             self.flush()
