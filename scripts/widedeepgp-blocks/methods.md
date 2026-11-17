@@ -722,24 +722,22 @@ Everything of plan section 7 was built on 17 November 2026 (DeepWideGP `widening
 section 4.11 describes the code; the departures from the design above, each an engineering finding or a
 simplification, are:
 
-1. **A linear readout of the table is part of the network.** Beside the mixer's reading of the block
-   tokens, the model adds to its logits a linear map (`readout`, embed_dim to 30 outputs, no bias) of the
-   table summed over all SNPs: logit_j = deep_j + Σ_e a_je Σ_s x_s T_se. Section 2 had no such term and said
-   the model contains a ridge "with the rest of the network summing tokens"; in the code the containment is
-   exact and tested (the head's last layer at zero gives a rank-embed_dim ridge PRS). The reason is
-   empirical: without the readout, a table that starts at zero takes its gradient direction from a random,
-   fast-moving downstream network and its Adam steps never accumulate. On a synthetic dataset (4,000
-   participants, 132 SNPs, six liability-threshold traits with two shared and two trait-specific causal SNPs
-   each), the model without the readout learned the three shared-SNP traits only after a phase transition
-   at the fourth pass and never the two trait-specific ones (tuning AUROC 0.48 and 0.39 against ceilings
-   0.78 and 0.97, in every variant tried: a tenth of the table learning rate, two mixer layers, shuffled
-   batches without class weights, a narrower head); with one SNP per block it learned nothing at all. With
-   the readout every trait is learned after one pass (final mean AUROC over the heritable traits 0.83
-   against a ceiling of 0.86; the published SNP-token model reached 0.75 on the same data), and block
-   size and the table's learning rate stop mattering. The model remains one network trained end to end
-   from dosages with nothing fitted outside it; the readout is a residual connection from the first layer
-   to the output, and the deep path learns what the linear reading of the table misses. Kaplan's N counts
-   the readout with the head.
+1. **No linear readout; the first layer may not train at small N.** During the implementation a linear
+   readout of the table (a map from the table summed over all SNPs to the 30 logits, added to the head's)
+   was tried and then removed at Robert's instruction on 17 November 2026: the model is exactly the design
+   of section 2, with every prediction passing through the block MLP, the mixer and the head. The reason
+   the readout was tried is a finding the reader of the results must know. On a synthetic dataset (4,000
+   participants, 132 SNPs, six liability-threshold traits with two shared and two trait-specific causal
+   SNPs each) the model of section 2 learned the three shared-SNP traits only after a phase transition at
+   the fourth pass and never the two trait-specific ones (tuning AUROC 0.48 and 0.39 against ceilings 0.78
+   and 0.97, in every variant tried: a tenth of the table learning rate, two mixer layers, shuffled batches
+   without class weights, a narrower head); with one SNP per block it learned nothing at all. The cause is
+   that a table starting at zero takes its gradient direction from a random, fast-moving downstream network,
+   so its Adam steps do not accumulate; with the readout every trait was learned after one pass. Robert's
+   position is that the model was never expected to work at a few thousand participants and that the
+   question is whether it works at 200,000; the architecture is therefore kept as designed and the E0 gate
+   and the top-rung pre-test decide. The ridge is contained in the first layer (with embed_dim 1 the pooled
+   values are a ridge PRS's per-block sums), not as an exact special case of the whole model.
 2. **One flag for the first layer's initialisation.** `--init_encoder <file>` loads tables (and whatever
    else the file holds) from a file whose manifest says what it is (`kind` masked or ridge), with
    `--freeze_encoder` to keep the loaded parameters fixed; the flags `--pretrain` and `--init_table` of
