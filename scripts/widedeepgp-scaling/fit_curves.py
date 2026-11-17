@@ -19,6 +19,7 @@ import glob
 import json
 import os
 import sys
+import time
 
 import numpy as np
 import pandas as pd
@@ -46,24 +47,33 @@ def disease_table(sldsc=SLDSC, power=POWER, M_e=60_000):
 
 
 def family_of(config):
-    """A deep cell's family name and size columns from its config.json: mixer, shape, table width,
-    partition and any ablation flag off its default (contract, "What a deep run records")."""
+    """A deep cell's family name, its rung (the dataset directory's name) and its size columns from
+    config.json: mixer, shape, table width, partition, and each ablation off its default as the
+    model records it: the SNP code, the first layer's --init_encoder file (its stem, with the rung
+    it came from when not the run's own) and :frozen for --freeze_encoder."""
     m, a, b = config["model"], config["args"], config.get("blocks")
+    rung = os.path.basename(os.path.normpath(config["dataset_dir"]))
+    fam = f"deep:{m['mixer']}:d{m['d_model']}x{m['e_layers']}"
+    cols = dict(mixer=m["mixer"], d_model=m["d_model"], e_layers=m["e_layers"], n_params=config["n_parameters"])
     if b is None:
-        return f"deep:{m['mixer']}:d{m['d_model']}x{m['e_layers']}:snps", dict(mixer=m["mixer"], d_model=m["d_model"],
-                                                                              e_layers=m["e_layers"], n_params=config["n_parameters"])
-    fam = f"deep:{m['mixer']}:d{m['d_model']}x{m['e_layers']}:de{b['embed_dim']}:{b['partition']}"
-    for key, default in (("snp_code", "dosage"), ("pretrain", "none"), ("init_table", "none")):
-        v = b.get(key, a.get(key, default))
-        if v not in (default, None):
-            fam += f":{key}={v}"
-    return fam, dict(mixer=m["mixer"], d_model=m["d_model"], e_layers=m["e_layers"], embed_dim=b["embed_dim"],
-                     partition=b["partition"], n_blocks=b["n_blocks"], n_mixer_params=b["n_parameters_by_module"]["mixer"],
-                     n_non_embedding_params=b["n_non_embedding_parameters"], n_params=config["n_parameters"])
+        return fam + ":snps", rung, cols
+    fam += f":de{b['embed_dim']}:{b['partition']}"
+    if b.get("snp_code", "dosage") != "dosage":
+        fam += f":snp_code={b['snp_code']}"
+    init = m.get("init_encoder") or a.get("init_encoder")
+    if init:
+        src = os.path.basename(os.path.dirname(os.path.dirname(init)))          # <rung>/blocks/<file>.pt
+        fam += f":init={os.path.splitext(os.path.basename(init))[0]}" + ("" if src == rung else f"@{src}")
+    if m.get("freeze_encoder") or a.get("freeze_encoder"):
+        fam += ":frozen"
+    cols.update(embed_dim=b["embed_dim"], partition=b["partition"], n_blocks=b["n_blocks"],
+                n_mixer_params=b["n_parameters_by_module"]["mixer"], n_non_embedding_params=b["n_non_embedding_parameters"])
+    return fam, rung, cols
 
 
 def deep_rows(roots):
-    """One row per run, split and disease from every scores_<split>_summary.csv under the roots."""
+    """One row per run, split and disease from every scores_<split>_summary.csv under the roots.
+    Two runs that would land in one cell (family, rung, seed, split) are refused by name."""
     rows = []
     for root in roots:
         for dirpath, _, files in sorted(os.walk(root)):
@@ -72,8 +82,7 @@ def deep_rows(roots):
                 continue
             with open(os.path.join(dirpath, "config.json")) as f:
                 config = json.load(f)
-            fam, cols = family_of(config)
-            rung = os.path.basename(os.path.normpath(config["dataset_dir"]))
+            fam, rung, cols = family_of(config)
             scores = os.path.join(config["dataset_dir"], "scores", config["args"]["experiment"], config["args"]["exp_name"])
             for name in summaries:
                 split = name[len("scores_"):-len("_summary.csv")]
@@ -82,7 +91,13 @@ def deep_rows(roots):
                                      seed=config["args"]["seed"], split=split, snapshot=r.snapshot, auroc=r.auroc,
                                      auroc_cov=r.auroc_covariates_only, delta_auroc=r.auroc_gain, n=r.n, n_cases=r.n_cases,
                                      run_dir=dirpath, score_path=os.path.join(scores, f"{split}_{r.snapshot}.npz"), **cols))
-    return pd.DataFrame(rows)
+    t = pd.DataFrame(rows)
+    cell = ["family", "rung", "seed", "split"]
+    runs = t.drop_duplicates(cell + ["run_dir"]) if len(t) else t
+    clash = runs.duplicated(cell, keep=False)
+    if clash.any():
+        raise ValueError("runs that would share a cell:\n" + runs[clash].sort_values(cell)[cell + ["run_dir"]].to_string(index=False))
+    return t
 
 
 def pgi_rows(results_dir):
@@ -104,21 +119,23 @@ def pgi_rows(results_dir):
 
 
 def manifest(deep, pgi, datasets=DATASETS):
-    """Where each cell's per-person tuning scores are expected: the deep arm's val_<snapshot>.npz,
-    the PGI arm's scores/pgi/<fingerprint>/<method>/val.npz and the block-linear comparators'
-    scores/blocks_linear/<method>/val_best.npz (family twin:<method>)."""
+    """Where each cell's per-person scores are expected, for the tuning split and the test split
+    (present only after the unlock): the deep arm's <split>_<snapshot>.npz, the PGI arm's
+    scores/pgi/<fingerprint>/<method>/<split>.npz and the block-linear comparators'
+    scores/blocks_linear/<method>/<split>_best.npz (family twin:<method>). Paths only."""
     rows = []
-    if len(deep):
-        d = deep[deep.split == "val"].drop_duplicates(["family", "rung", "seed"])
-        rows += [dict(family=r.family, rung=r.rung, seed=r.seed, split="val", path=r.score_path) for r in d.itertuples()]
-    if len(pgi):
-        for r in pgi.drop_duplicates(["family", "rung", "fingerprint"]).itertuples():
-            hits = sorted(glob.glob(os.path.join(datasets, r.rung, "scores", "pgi", f"{r.fingerprint}*", r.family, "val.npz")))
-            rows.append(dict(family=r.family, rung=r.rung, seed=1, split="val", path=hits[0] if hits else
-                             os.path.join(datasets, r.rung, "scores", "pgi", f"{r.fingerprint}...", r.family, "val.npz")))
-    for rung in RUNGS:
-        for path in sorted(glob.glob(os.path.join(datasets, rung, "scores", "blocks_linear", "*", "val_best.npz"))):
-            rows.append(dict(family="twin:" + os.path.basename(os.path.dirname(path)), rung=rung, seed=1, split="val", path=path))
+    for split in ("val", "test"):
+        if len(deep):
+            d = deep[deep.split == split].drop_duplicates(["family", "rung", "seed"])
+            rows += [dict(family=r.family, rung=r.rung, seed=r.seed, split=split, path=r.score_path) for r in d.itertuples()]
+        if len(pgi):
+            for r in pgi.drop_duplicates(["family", "rung", "fingerprint"]).itertuples():
+                hits = sorted(glob.glob(os.path.join(datasets, r.rung, "scores", "pgi", f"{r.fingerprint}*", r.family, f"{split}.npz")))
+                rows.append(dict(family=r.family, rung=r.rung, seed=1, split=split, path=hits[0] if hits else
+                                 os.path.join(datasets, r.rung, "scores", "pgi", f"{r.fingerprint}...", r.family, f"{split}.npz")))
+        for rung in RUNGS:
+            for path in sorted(glob.glob(os.path.join(datasets, rung, "scores", "blocks_linear", "*", f"{split}_best.npz"))):
+                rows.append(dict(family="twin:" + os.path.basename(os.path.dirname(path)), rung=rung, seed=1, split=split, path=path))
     m = pd.DataFrame(rows, columns=["family", "rung", "seed", "split", "path"])
     m["exists"] = [os.path.exists(p) for p in m.path]
     return m
@@ -150,8 +167,15 @@ def person_from(table, manifest_path, dataset, split="val"):
 
 
 def fit(table_path, out, manifest_path=None, dataset=None, B=2000, split="val", unlock_test=False):
-    if split == "test" and not unlock_test:
-        raise SystemExit("the test split is locked: pass --unlock_test only at the joint unlock (PGI methods 6.4)")
+    """curves.analyse on one split's rows of the table, with the per-person scores when a manifest
+    and a dataset directory are given (hours at the real size: launch detached, CLAUDE.md section
+    1). The test split needs --unlock_test and appends the access to <out>/test_access.log."""
+    if split == "test":
+        if not unlock_test:
+            raise SystemExit("the test split is locked: pass --unlock_test only at the joint unlock (PGI methods 6.4)")
+        os.makedirs(out, exist_ok=True)
+        with open(os.path.join(out, "test_access.log"), "a") as f:
+            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')}\tfit --split test\ttable={table_path}\tmanifest={manifest_path}\tdataset={dataset}\tB={B}\n")
     table = pd.read_csv(table_path)
     if "split" in table:
         table = table[table.split == split]
@@ -191,8 +215,11 @@ def main(argv=None):
               f"{int(m.exists.sum())} of {len(m)} score files present -> {a.out}")
     else:
         r = fit(a.table, a.out, a.manifest, a.dataset, a.bootstrap, a.split, a.unlock_test)
+        if not (a.manifest and a.dataset):
+            print("TABLE ONLY, a quick look: the deep gains are against the deep arm's own covariates-only model and the PGI "
+                  "gains against the tuning-set refit; no intervals, so no decision below is reportable and the null is undetermined.")
         print(r["pooled"].to_string(index=False))
-        print("null:", r["null"].null.iloc[0])
+        print("null:", r["null"].iloc[0].to_dict())
 
 
 if __name__ == "__main__":

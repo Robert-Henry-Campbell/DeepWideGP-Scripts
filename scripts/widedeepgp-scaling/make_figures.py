@@ -228,12 +228,15 @@ def compute_fixed_data(compute, rung=None):
     return fig, pd.DataFrame(rows), legend
 
 
+GROUPS = ("asian", "black", "wb_related")      # the held-out groups; the test split is not a transfer group
+
+
 def transfer_offset(tidy, family=None):
     """Mean AUROC on the tuning set minus on each held-out group, against median N_eff."""
     t = tidy[tidy.family.str.startswith("deep:")] if family is None else tidy[tidy.family == family]
     t = t.groupby(["family", "rung", "split", "disease"]).agg(auroc=("auroc", "mean"), n_eff=("n_eff", "first")).reset_index()
     val = t[t.split == "val"].rename(columns={"auroc": "auroc_val"}).drop(columns="split")
-    other = t[t.split != "val"].merge(val, on=["family", "rung", "disease", "n_eff"])
+    other = t[t.split.isin(GROUPS)].merge(val, on=["family", "rung", "disease", "n_eff"])
     other["offset"] = other.auroc_val - other.auroc
     p = other.groupby(["split", "family", "rung"]).agg(offset=("offset", "mean"), n_eff=("n_eff", "median")).reset_index()
     fig, ax = R.new_figure(89, 60)
@@ -273,8 +276,9 @@ def main(argv=None):
     cells, size, pooled, gap, spline = (read(n) for n in ("cells", "size", "pooled", "gap", "spline"))
     size = size if size is not None else pd.DataFrame(columns=["axis", "rung", "mixer", "n_opt", "size_matters"])
     written = {}
-    written["curves_by_family"] = R.save(*curves_by_family(cells)[:1], a.out, "curves_by_family", *curves_by_family(cells)[1:])
-    written["curves_per_disease"] = R.save(*curves_per_disease(cells)[:1], a.out, "curves_per_disease", *curves_per_disease(cells)[1:])
+    for name, fn in (("curves_by_family", curves_by_family), ("curves_per_disease", curves_per_disease)):
+        fig, data, legend = fn(cells)
+        written[name] = R.save(fig, a.out, name, data, legend)
     if gap is not None and pooled is not None:
         fig, data, legend = gap_vs_x(gap, pooled, spline)
         written["gap_vs_x"] = R.save(fig, a.out, "gap_vs_x", data, legend)
@@ -289,7 +293,7 @@ def main(argv=None):
             written["compute_fixed_data"] = R.save(fig, a.out, "compute_fixed_data", data, legend)
     if a.tidy:
         tidy = pd.read_csv(a.tidy)
-        if "split" in tidy and (tidy.split != "val").any():
+        if "split" in tidy and tidy.split.isin(GROUPS).any():
             fig, data, legend = transfer_offset(tidy)
             written["transfer_offset"] = R.save(fig, a.out, "transfer_offset", data, legend)
     wide, long = ablation_table(cells)
