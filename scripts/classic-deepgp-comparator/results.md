@@ -14,7 +14,9 @@ on the tuning set after 8 passes without improvement (methods, "The 30-disease v
 | `classic_i10_n215872_quick` (I10 only) | 28,536 (I10 GWAS p ≤ 0.05, clumped) | 1 | 0.6987 | 4.75 | 6.76 |
 | `classic30_n215872` (all 30 diseases) | 179,566 (p ≤ 0.05 in any of the 30 GWAS, clumped once) | 30 | 0.6627 | 7.76 | 9.76 |
 
-Yardsticks on the same tuning set: the covariates alone 0.6627 (I10 0.6990); the logistic ridge on the cross-fitted
+Yardsticks on the same tuning set: the covariates alone 0.6627 (I10 0.6990), an unpenalised logistic regression on the 12
+covariates (age, sex, 10 PCs; the shared protocol's linear basis) fitted on the training split, not a network's covariate-only
+output; the logistic ridge on the cross-fitted
 block channels 0.6732; the cross-fitted block ridge PRS plus covariates 0.6777 (`widedeepgp-blocks/results/hm3plus/blocks_linear.csv`).
 Both classic runs sit at the covariate floor: the 30-output run beats the ridge PRS for none of the 30 diseases, and its
 I10 output (0.6990) equals the single-disease run's (0.6987). Multi-disease

@@ -791,7 +791,9 @@ simplification, are:
 9. **The table's optimiser, after the first top-rung runs (17 November 2026, evening).** The first
    relaunch (no simulated gate; T0 then the grid from the top rung down) showed the plain model learning
    nothing from the genotypes at 215,872 participants: S1, S3 and S5 once each at fixed settings reached
-   mean tuning AUROCs of 0.6610, 0.6624 and 0.6619 against 0.6627 for the covariates alone, and a 12-trial
+   mean tuning AUROCs of 0.6610, 0.6624 and 0.6619 against 0.6627 for the covariates alone (here and below: an
+   unpenalised logistic regression on the 12 covariates fitted on the rung's training split and scored on the tuning
+   set, never a network's covariate-only output), and a 12-trial
    search at S1 0.6626. The curves showed Adam noise accumulating in the table at S3 (training loss rising
    after the first third of the run while the table's sum of squares grew a thousandfold) and the table's
    gradient collapsing at S5. Robert had the chain stopped and its outputs wiped, and three changes
