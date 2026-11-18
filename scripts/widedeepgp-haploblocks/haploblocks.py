@@ -25,7 +25,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 from ridge_common import Rung, load_partition, save_npz  # noqa: E402
 
 RESULTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results")
-M_GENOME = 1258200                      # the model's SNPs: the projection factor is M_GENOME / (SNPs on this chromosome)
 
 
 def cell_name(freq, cover):
@@ -95,8 +94,8 @@ def segment_chromosome(H, blocks, is_train, freq, cover):
                 cover=np.array([s[5] for s in segs])), np.ascontiguousarray(codes)
 
 
-def summarise(seg, pos, m, cell, freq, cover):
-    """One aggregate row of the grid table."""
+def summarise(seg, pos, m, cell, freq, cover, M):
+    """One aggregate row of the grid table; M is the store's SNP count, the projection factor is M / m."""
     n_snps = seg["end"] - seg["start"]
     kb = (pos[seg["end"] - 1] - pos[seg["start"]]) / 1e3
     feats = int((seg["H"] + 1).sum())
@@ -108,8 +107,8 @@ def summarise(seg, pos, m, cell, freq, cover):
                 H_mean=float(seg["H"].mean()), H_median=q(seg["H"], 0.5), H_q10=q(seg["H"], 0.1), H_q90=q(seg["H"], 0.9),
                 H_max=int(seg["H"].max()), share_H_2_to_15=float(((seg["H"] >= 2) & (seg["H"] <= 15)).mean()),
                 coverage_mean=float(seg["cover"].mean()), coverage_min=float(seg["cover"].min()),
-                features=feats, features_per_snp=feats / m, features_genome_projected=int(round(feats * M_GENOME / m)),
-                segments_genome_projected=int(round(len(n_snps) * M_GENOME / m)))
+                features=feats, features_per_snp=feats / m, features_genome_projected=int(round(feats * M / m)),
+                segments_genome_projected=int(round(len(n_snps) * M / m)))
 
 
 def main(argv=None):
@@ -120,6 +119,7 @@ def main(argv=None):
     ap.add_argument("--freq", type=float, default=0.01)
     ap.add_argument("--cover", type=float, default=0.95)
     ap.add_argument("--grid", action="store_true", help="also the cells freq in {0.005, 0.01, 0.02} x cover in {0.9, 0.95, 0.99}")
+    ap.add_argument("--results", default=RESULTS, help="where the aggregate tables go")
     a = ap.parse_args(argv)
     rung = Rung(a.dataset_dir)
     haplo = os.path.join(rung.dir, "haplo")
@@ -127,6 +127,7 @@ def main(argv=None):
     if str(rows["chrom"]) != a.chrom:
         raise SystemExit("rows.npz was exported for another chromosome")
     pos = rung.store.positions(a.chrom)
+    M = sum(rung.store.n_variants(c) for c in rung.store.chroms)
     blocks = load_partition(a.partition, rung.store)["blocks"][a.chrom]
     t0 = time.time()
     H = read_haplotypes(os.path.join(haplo, f"chr{a.chrom}_phased.bcf"), rows["iid"], pos)
@@ -135,22 +136,23 @@ def main(argv=None):
     cells = [(a.freq, a.cover)]
     if a.grid:
         cells += [(f, c) for f in (0.005, 0.01, 0.02) for c in (0.9, 0.95, 0.99) if (f, c) != (a.freq, a.cover)]
-    os.makedirs(RESULTS, exist_ok=True)
-    gpath = os.path.join(RESULTS, "haploblocks_grid.csv")
+    os.makedirs(a.results, exist_ok=True)
+    gpath = os.path.join(a.results, "haploblocks_grid.csv")
     grid = pd.read_csv(gpath) if os.path.exists(gpath) else pd.DataFrame()
     for freq, cover in cells:
         t1, cell = time.time(), cell_name(freq, cover)
         seg, codes = segment_chromosome(H, blocks, is_train, freq, cover)
         save_npz(os.path.join(haplo, f"chr{a.chrom}_haploblocks_{cell}.npz"), iid=rows["iid"], split=rows["split"],
-                 codes=codes, freq=np.array(freq), cover=np.array(cover), chrom=np.array(a.chrom), **seg)
-        row = dict(chrom=a.chrom, **summarise(seg, pos, H.shape[0], cell, freq, cover), seconds=round(time.time() - t1, 1))
-        grid = pd.concat([grid[(grid.get("cell") != cell) | (grid.get("chrom").astype(str) != a.chrom)] if len(grid) else grid,
-                          pd.DataFrame([row])], ignore_index=True)
+                 codes=codes, freq_rule=np.array(freq), cover_rule=np.array(cover), chrom=np.array(a.chrom), **seg)
+        row = dict(chrom=a.chrom, **summarise(seg, pos, H.shape[0], cell, freq, cover, M), seconds=round(time.time() - t1, 1))
+        if len(grid):
+            grid = grid[~((grid["cell"] == cell) & (grid["chrom"].astype(str) == a.chrom))]
+        grid = pd.concat([grid, pd.DataFrame([row])], ignore_index=True)
         grid.to_csv(gpath, index=False, float_format="%.4f")
         if (freq, cover) == (a.freq, a.cover):
             pd.DataFrame(dict(block=seg["block"], start_pos=pos[seg["start"]], end_pos=pos[seg["end"] - 1],
                               n_snps=seg["end"] - seg["start"], H=seg["H"], coverage=np.round(seg["cover"], 4))
-                         ).to_csv(os.path.join(RESULTS, f"haploblocks_chr{a.chrom}_{cell}_segments.csv"), index=False)
+                         ).to_csv(os.path.join(a.results, f"haploblocks_chr{a.chrom}_{cell}_segments.csv"), index=False)
         print(f"{cell}: {row['n_segments']} segments, H median {row['H_median']:.0f} (q90 {row['H_q90']:.0f}), "
               f"{row['features']} features ({row['features_per_snp']:.2f} per SNP), {row['seconds']} s", flush=True)
 

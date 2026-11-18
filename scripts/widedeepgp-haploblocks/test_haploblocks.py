@@ -6,6 +6,7 @@ import subprocess
 import sys
 
 import numpy as np
+import pandas as pd
 import pytest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -132,9 +133,10 @@ def test_summarise_counts_features_and_projects_to_the_genome():
     seg = dict(start=np.array([0, 4, 8]), end=np.array([4, 8, 12]), block=np.array([0, 0, 1]),
                H=np.array([3, 5, 1]), cover=np.array([0.96, 0.95, 1.0]))
     pos = np.arange(12) * 1000
-    row = hb.summarise(seg, pos, 12, "f0.01_c0.95", 0.01, 0.95)
+    row = hb.summarise(seg, pos, 12, "f0.01_c0.95", 0.01, 0.95, M=1200)
     assert row["n_segments"] == 3 and row["features"] == 4 + 6 + 2 and row["features_per_snp"] == 1.0
-    assert row["features_genome_projected"] == hb.M_GENOME and row["share_H_2_to_15"] == pytest.approx(2 / 3)
+    assert row["features_genome_projected"] == 1200 and row["segments_genome_projected"] == 300
+    assert row["share_H_2_to_15"] == pytest.approx(2 / 3)
     assert row["kb_per_segment_median"] == 3.0 and row["H_max"] == 5
 
 
@@ -254,3 +256,54 @@ def test_the_logistic_combination_scores_out_of_sample():
     y = (x[:, 0] + 0.5 * x[:, 2] + rng.standard_normal(2000) > 0).astype(float)
     tr, te = cr.logistic(x[:1500], y[:1500], [x[:1500], x[1500:]])
     assert roc_auc_score(y[1500:], te) > 0.75 and len(tr) == 1500
+
+
+sys.path.insert(0, os.path.join(HERE, "..", "widedeepgp-blocks"))
+from test_block_ridge import build as build_synthetic  # noqa: E402
+from ridge_common import MISSING, Rung, load_partition  # noqa: E402
+
+
+def test_compare_ridge_runs_end_to_end_on_the_synthetic_store_and_reproduces_the_stored_snp_ridge(tmp_path):
+    """The synthetic dataset of the block-ridge tests (no UK Biobank data), haplotypes drawn from its hard calls on
+    chromosome 1, the haploblock codes written by segment_chromosome, then compare_ridge.main: the SNP ridge's fold
+    weights must reproduce the stored ridge_weights_fold<k>.npy, and the tables must be complete."""
+    d = build_synthetic(tmp_path)
+    rung = Rung(d["dir"])
+    tr, va = rung.table("train"), rung.table("val")
+    iid, rows = np.r_[tr["iid"], va["iid"]], np.r_[tr["rows"], va["rows"]]
+    split = np.r_[np.full(len(tr["iid"]), "train"), np.full(len(va["iid"]), "val")]
+    haplo = os.path.join(rung.dir, "haplo")
+    os.makedirs(haplo, exist_ok=True)
+    np.savez(os.path.join(haplo, "rows.npz"), iid=iid, rows=rows, split=split, chrom=np.array("1"))
+    q = rung.store.read_q("1", rows)
+    call = np.where(q == MISSING, 0, np.rint(q / 100.0)).astype(np.int64)
+    rng = np.random.default_rng(0)
+    flip = rng.integers(0, 2, call.shape)
+    a1 = np.where(call == 2, 1, np.where(call == 1, flip, 0)).astype(np.uint8)
+    a2 = np.where(call == 2, 1, np.where(call == 1, 1 - flip, 0)).astype(np.uint8)
+    H = np.empty((call.shape[1], 2 * len(rows)), dtype=np.uint8)
+    H[:, 0::2], H[:, 1::2] = a1.T, a2.T
+    blocks = load_partition(d["part"], rung.store)["blocks"]["1"]
+    seg, codes = hb.segment_chromosome(H, blocks, np.repeat(split == "train", 2), 0.01, 0.95)
+    assert codes.shape[0] == len(rows) and (codes.max(axis=(0, 2)) <= seg["H"]).all()
+    np.savez(os.path.join(haplo, "chr1_haploblocks_f0.01_c0.95.npz"), iid=iid, split=split, codes=codes, chrom=np.array("1"), **seg)
+    res = str(tmp_path / "results")
+    cr.main([d["dir"], "--chrom", "1", "--partition", d["part"], "--cell", "f0.01_c0.95", "--n_boot", "20", "--threads", "2", "--results", res])
+    check = pd.read_csv(os.path.join(res, "check_snp_weights_chr1.csv"))
+    assert len(check) == len(blocks) * K_FOLDS and check["rel_err"].max() < 1e-4
+    table = pd.read_csv(os.path.join(res, "compare_chr1_f0.01_c0.95.csv"))
+    pooled = pd.read_csv(os.path.join(res, "compare_chr1_f0.01_c0.95_pooled.csv"))
+    n_lab = len(rung.labels)
+    assert len(table) == 2 * n_lab and set(table["penalties"]) == {"chosen", "h2_0.15"}
+    assert (table["h2_snp"].isin(cr.H2)).all() and table["dauroc_snp_val"].notna().all()
+    assert len(pooled) == 2 * 2 * 2 * 2 and (pooled["lo"] <= pooled["mean_diff"]).all() and (pooled["mean_diff"] <= pooled["hi"]).all()
+    assert (pooled["n_positive"] + pooled["n_negative"] <= n_lab).all()
+    sc = np.load(os.path.join(haplo, "scores_chr1_f0.01_c0.95.npz"), allow_pickle=True)
+    assert sc["score_snp"].shape == (len(rows), len(cr.H2) * n_lab) and (sc["iid"] == iid).all()
+    n_tr, n_pen = len(tr["iid"]), len(cr.H2)
+    chosen = table[table["penalties"] == "chosen"].set_index("label")
+    for j, lab in enumerate(rung.labels):                      # the choice is the best out-of-fold AUROC of the raw score
+        best = int(np.nanargmax([roc_auc_score(tr["y"][:, j] > 0.5, sc["score_hap"][:n_tr, n_pen * j + p]) for p in range(n_pen)]))
+        assert chosen.loc[lab, "h2_hap"] == pytest.approx(cr.H2[best])
+    hap = cr.hap_counts(codes, seg["H"])
+    assert (hap.sum(1) == 2 * len(seg["H"])).all()

@@ -28,7 +28,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ridge_common import K_FOLDS, MISSING, Rung, auroc, inverse_sd, load_partition, prefetch, save_json, save_npz  # noqa: E402
 from build_block_ridge import residual_coefficients, solve_block  # noqa: E402
-from haploblocks import M_GENOME, RESULTS, cell_name  # noqa: E402
+from haploblocks import RESULTS, cell_name  # noqa: E402
 
 H2 = [0.0167, 0.05, 0.15, 0.45, 1.35]
 PARAMS = ["snp", "hap", "both"]
@@ -126,7 +126,7 @@ def logistic(x_train, y_train, xs):
     """Logistic regression fitted on standardised x_train (no penalty to speak of); the fitted logit on every xs."""
     mu, sd = x_train.mean(0), x_train.std(0)
     f = lambda x: (x - mu) * inverse_sd(sd)
-    lr = LogisticRegression(C=1e6, max_iter=5000, tol=1e-6).fit(f(x_train), y_train > 0.5)
+    lr = LogisticRegression(C=1e6, max_iter=2000, tol=1e-5).fit(f(x_train), y_train > 0.5)
     return [lr.decision_function(f(x)) for x in xs]
 
 
@@ -144,6 +144,7 @@ def main(argv=None):
     ap.add_argument("--h2", type=float, nargs="+", default=H2)
     ap.add_argument("--n_boot", type=int, default=2000)
     ap.add_argument("--threads", type=int, default=10)
+    ap.add_argument("--results", default=RESULTS, help="where the aggregate tables go")
     a = ap.parse_args(argv)
     torch.set_num_threads(a.threads)
     rung, t0 = Rung(a.dataset_dir), time.time()
@@ -155,13 +156,13 @@ def main(argv=None):
     if (hb["iid"] != np.r_[tr["iid"], va["iid"]]).any():
         raise SystemExit("the haploblock codes are not in the train-then-val order of the tables")
     blocks = load_partition(a.partition, store)["blocks"][chrom]
-    m = store.n_variants(chrom)
+    m, M_snp = store.n_variants(chrom), sum(store.n_variants(c) for c in store.chroms)
     ci_ = list(store.chroms).index(chrom)
     stats_path, mean, std = rung.snp_stats(tr["rows"])
     mean, inv = mean[ci_], inverse_sd(std[ci_])
     rows = np.r_[tr["rows"], va["rows"]]
     q = np.empty((len(rows), m), dtype=np.uint8)
-    for idx, qq in prefetch(lambda b: (b, store.read_q(chrom, rows[b])), np.array_split(np.arange(len(rows)), len(rows) // 4096), 8):
+    for idx, qq in prefetch(lambda b: (b, store.read_q(chrom, rows[b])), np.array_split(np.arange(len(rows)), max(1, len(rows) // 4096)), 8):
         q[idx] = qq
     y, cov = np.r_[tr["y"], va["y"]].astype(np.float64), np.r_[tr["cov"], va["cov"]]
     t = np.column_stack([y[:n_tr], np.ones(n_tr), cov[:n_tr]])
@@ -169,8 +170,8 @@ def main(argv=None):
     Bt = torch.from_numpy(B)
     n_pen, n_lab = len(a.h2), y.shape[1]
     F = int((hb["H"] + 1).sum())
-    s_hap = np.sqrt(m / F)                                   # lambda_hap = M_hap / h2 with M_hap = F * M_GENOME / m
-    lams = [M_GENOME / h for h in a.h2]
+    s_hap = np.sqrt(m / F)                                   # lambda_hap = M_hap / h2 with M_hap = F * M_snp / m
+    lams = [M_snp / h for h in a.h2]
     print(f"chr{chrom}: {m} SNPs, {len(hb['H'])} haploblocks, {F} haplotype features (scale {s_hap:.3f}); "
           f"{n_tr} training and {n_va} tuning rows loaded in {time.time() - t0:.0f} s", flush=True)
 
@@ -202,9 +203,9 @@ def main(argv=None):
                     checks.append(dict(block=b, fold=f, rel_err=float(np.linalg.norm(mine - ref) / np.linalg.norm(ref))))
         print(f"block {b}: {ms} SNPs, {Z.shape[1] - ms} haplotype features, {time.time() - t1:.0f} s", flush=True)
         del Z, G, T
-    os.makedirs(RESULTS, exist_ok=True)
+    os.makedirs(a.results, exist_ok=True)
     if checks:
-        pd.DataFrame(checks).to_csv(os.path.join(RESULTS, f"check_snp_weights_chr{chrom}.csv"), index=False, float_format="%.3e")
+        pd.DataFrame(checks).to_csv(os.path.join(a.results, f"check_snp_weights_chr{chrom}.csv"), index=False, float_format="%.3e")
         print(f"SNP fold weights against the stored ridge: max relative error {max(c['rel_err'] for c in checks):.2e}", flush=True)
     save_npz(os.path.join(haplo, f"scores_chr{chrom}_{a.cell}.npz"), iid=hb["iid"], split=hb["split"], fold=folds, h2=np.array(a.h2),
              labels=np.array(rung.labels), **{f"score_{p}": S[p].astype(np.float32) for p in PARAMS})
@@ -251,11 +252,11 @@ def main(argv=None):
                     pooled.append(dict(penalties=tag, metric=metric, set=name, comparison=f"{p}_minus_snp", mean_diff=e, lo=lo, hi=hi,
                                        median_diff=float(np.median(point)), n_positive=int(sum(v > 0 for v in point)),
                                        n_negative=int(sum(v < 0 for v in point)), n_boot=a.n_boot))
-    pd.DataFrame(rows_out).to_csv(os.path.join(RESULTS, f"compare_chr{chrom}_{a.cell}.csv"), index=False, float_format="%.5f")
-    pd.DataFrame(pooled).to_csv(os.path.join(RESULTS, f"compare_chr{chrom}_{a.cell}_pooled.csv"), index=False, float_format="%.5f")
+    pd.DataFrame(rows_out).to_csv(os.path.join(a.results, f"compare_chr{chrom}_{a.cell}.csv"), index=False, float_format="%.5f")
+    pd.DataFrame(pooled).to_csv(os.path.join(a.results, f"compare_chr{chrom}_{a.cell}_pooled.csv"), index=False, float_format="%.5f")
     save_json(os.path.join(haplo, f"compare_chr{chrom}_{a.cell}.json"),
               dict(chrom=chrom, cell=a.cell, snps=m, haploblocks=int(len(hb["H"])), hap_features=F, hap_scale=float(s_hap),
-                   h2=a.h2, M_snp=M_GENOME, M_hap=F * M_GENOME / m, n_train=n_tr, n_val=n_va, n_boot=a.n_boot,
+                   h2=a.h2, M_snp=M_snp, M_hap=F * M_snp / m, n_train=n_tr, n_val=n_va, n_boot=a.n_boot,
                    standardisation=os.path.basename(stats_path), partition=os.path.abspath(a.partition),
                    max_snp_weight_rel_err=max([c["rel_err"] for c in checks], default=None), seconds=round(time.time() - t0, 1)))
     print(pd.DataFrame(pooled).to_string(index=False), flush=True)
