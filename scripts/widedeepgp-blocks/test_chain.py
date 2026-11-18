@@ -75,3 +75,13 @@ def test_the_comparator_phases_skip_by_product_and_run_only_the_missing_steps(tm
     del outcome["fit_block_linear.py"]
     assert c.lin(c.TOP, "cpu") == 0
     assert "fit_block_linear.py exit 0, blocks_linear.csv missing; chain stopped" in (tmp_path / "out" / "chain.log").read_text()
+
+
+def test_a_single_run_resumes_only_when_its_checkpoint_exists(tmp_path, monkeypatch):
+    c = _chain()
+    monkeypatch.setattr(c, "OUT", str(tmp_path))
+    cmd = [c.PY, "main_multilabel.py", "--exp_name", "t0_x", "--tune_trials", "0"]
+    assert c.single(cmd, "t0_x") == cmd
+    (tmp_path / "t0_x" / "checkpoints").mkdir(parents=True)
+    (tmp_path / "t0_x" / "checkpoints" / "last.ckpt").write_text("x")
+    assert c.single(cmd, "t0_x") == cmd + ["--resume"] and cmd[-1] == "0"           # the given list is not changed

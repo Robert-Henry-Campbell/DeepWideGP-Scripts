@@ -5,8 +5,8 @@ the rungs; the side studies after the grid). One process runs every cell in orde
 DeepWideGP's `widening` branch:
 
     lin        the comparators per rung in two phases. On a GPU, reserved for the build and released when the phase
-               ends: the folds, the closed-form block ridge and the ridge warm start, the top rung on one GPU and
-               the other rungs in turn on a second. On the CPU, beside the training: the ridge check and the
+               ends: the folds, the closed-form block ridge and the ridge warm start, the top rung first and the
+               other rungs in turn after T0 (their warm starts are needed days later). On the CPU, beside the training: the ridge check and the
                linear twins. T0 and a rung's grid wait for that rung's warm start only; a step whose product
                exists is skipped (18 November 2026)
     t0         the pre-test: S1, S3, S5 once each at the top rung, fixed settings, from the ridge warm start, each
@@ -83,6 +83,11 @@ def sh(cmd, log_name, gpu=None, cwd=None, env=None):
         f.write(f"\n### {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} {' '.join(cmd)}\n")
         f.flush()
         return subprocess.run(cmd, stdout=f, stderr=subprocess.STDOUT, cwd=cwd, env=e).returncode
+
+
+def single(cmd, name):
+    """A single run's command (--tune_trials 0), continuing from its last checkpoint when a stopped attempt left one."""
+    return cmd + (["--resume"] if os.path.exists(f"{OUT}/{name}/checkpoints/last.ckpt") else [])
 
 
 def spawn(cmd, log_name, gpu, cwd=None):
@@ -269,7 +274,7 @@ class Seeds:
                 cmd = [PY, "main_multilabel.py", *base_flags, "--exp_name", f"{name}_seed{seed}", "--seed", str(seed),
                        "--tune_trials", "0", *[a for k, v in p.items() for a in (f"--{k}", str(v))]] + \
                       (["--init_encoder", init_path] if init_path else [])
-                self.pending.append((f"{name}_seed{seed}", cmd))
+                self.pending.append((f"{name}_seed{seed}", single(cmd, f"{name}_seed{seed}")))
         if len(self.pending) >= 6:
             self.flush()
 
@@ -311,13 +316,11 @@ def main():
     log(f"chain starting from {CODE}, pid {os.getpid()}")
     seeds = Seeds()
     down = RUNGS[::-1]                                       # the top rung first
-    # the comparators' GPU phases (folds, block ridge, warm start): the top rung on one GPU, the other rungs in turn
-    # on a second, each reserved for its build and released when the phase ends; the CPU phases (the ridge check,
-    # the linear twins) beside the training
-    gpus = free_gpus()
-    lin_top = spawn([PY, __file__, "lin", "gpu", "one", TOP], f"lin_{TOP}_gpu", gpus[0])
-    lin_rest = spawn([PY, __file__, "lin", "gpu", "rest"], "lin_rest_gpu", gpus[-1])
-    RESERVED.update({gpus[0]: lin_top, gpus[-1]: lin_rest})   # a build fills its GPU (eigh of a 15,000-SNP block)
+    # the top rung's comparator GPU phase (folds, block ridge, warm start) on a GPU reserved for it and released when
+    # the phase ends; the CPU phases (the ridge check, the linear twins) of every rung beside the training
+    gpu = free_gpus(exclusive=True)[0]
+    lin_top = spawn([PY, __file__, "lin", "gpu", "one", TOP], f"lin_{TOP}_gpu", gpu)
+    RESERVED[gpu] = lin_top                                   # a build fills its GPU (eigh of a 15,000-SNP block)
     twins = [spawn([PY, __file__, "lin", "cpu", "one", TOP], f"lin_{TOP}_cpu", ""),
              spawn([PY, __file__, "lin", "cpu", "rest"], "lin_rest_cpu", "")]
     if lin_top.wait():
@@ -341,12 +344,18 @@ def main():
                "--seed", "1", "--tune_trials", "0", *[a for k, v in DEFAULTS.items() for a in (f"--{k}", str(v))],
                "--init_encoder", top_init]
         log(f"t0 {name}: starting on GPU {gpus[0]}")
-        running[gpus[0]] = spawn(cmd, f"cell_{name}", gpus[0], cwd=CODE)
+        running[gpus[0]] = spawn(single(cmd, name), f"cell_{name}", gpus[0], cwd=CODE)
         procs.append((name, running[gpus[0]]))
     for name, proc in procs:
         if proc.wait() or results(f"{OUT}/{name}") is None:
             raise RuntimeError(f"{name} failed")
         log(f"t0 {name}: tuning AUROC {results(f'{OUT}/{name}')['best_val_auroc_mean']:.4f}")
+
+    # the other rungs' GPU phases, in turn on a GPU reserved for them: their warm starts are needed only when the grid
+    # reaches those rungs, days later, so they wait until T0 is done rather than take a GPU from it
+    gpu = free_gpus(exclusive=True)[0]
+    lin_rest = spawn([PY, __file__, "lin", "gpu", "rest"], "lin_rest_gpu", gpu)
+    RESERVED[gpu] = lin_rest
 
     # grid: rung by rung from the top, five sizes x two mixers, the plain configuration on the Prive partition
     for r in down:                                           # a rung's cells wait for its warm start

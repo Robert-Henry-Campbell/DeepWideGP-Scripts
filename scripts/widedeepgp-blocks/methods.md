@@ -862,8 +862,12 @@ simplification, are:
    each of its three runs on a GPU of its own as one frees (`free_gpus(exclusive=True)`), and moved the
    no-initialisation cells to the side studies beside the other ablations. The transformer no-initialisation
    cell's first trial had reached 8 epoch-equivalents at the covariate floor (mean tuning AUROC 0.6628 against
-   0.6627 for the covariates alone) and resumes there from its checkpoint. The fitted models and the comparators
-   do not change: the same steps run, in another order.
+   0.6627 for the covariates alone) and resumes there from its checkpoint. A third relaunch (01:30Z) moved the
+   lower rungs' GPU phases after T0 as well: their first step, the SNP statistics over the rung's training rows,
+   runs on the CPU for tens of minutes while the GPU sits reserved, and their warm starts are needed only when the
+   grid reaches those rungs, days later; T0's second run now takes that GPU at once. Single runs (T0 and the seed
+   retrains) pass `--resume` when a stopped attempt left a checkpoint. The fitted models and the comparators do
+   not change: the same steps run, in another order.
 
 ## References
 
