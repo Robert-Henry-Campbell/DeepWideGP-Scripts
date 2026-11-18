@@ -48,7 +48,8 @@ One row per disease, rung, model family, seed and split. Columns: `disease`, `ru
 - **Linear rows** come from `PGI/results/<rung>/tune_metrics.csv`, cells `ok` or `not_estimable` (the
   latter at gain 0, the pipeline's rule); the family is the method name. A table holds the shared
   protocol's one covariate basis (the 12 covariates entered linearly since 18 November 2026, PGI methods
-  6.1 and 13; before, a spline of year of birth by sex), and a table with two bases is refused.
+  6.1 and 13; before, a spline of year of birth by sex). A table with two bases is refused, and so are
+  rungs whose tables differ in basis, which happens only while the PGI arm regenerates them.
 - **N_eff** of a disease at a rung is that rung's training cases and controls,
   4 / (1/cases + 1/controls), from `PGI/results/ladder/rung_power.csv` (`neff_train` at M_e 60,000).
   **h²** is the project's own S-LDSC estimate (`PGI/results/hm3plus/sldsc_h2.csv`: `h2_obs50` with

@@ -335,3 +335,12 @@ def test_a_tune_metrics_table_with_two_covariate_bases_is_refused(tmp_path):
     pd.DataFrame([row, dict(row, method="lassosum2", basis="spline")]).to_csv(tmp_path / rung / "tune_metrics.csv", index=False)
     with pytest.raises(ValueError, match="several covariate bases"):
         F.pgi_rows(str(tmp_path))
+    # nor are rungs gathered whose tables differ in basis (the PGI arm half-way through regenerating them)
+    pd.DataFrame([row]).to_csv(tmp_path / rung / "tune_metrics.csv", index=False)
+    other = list(F.RUNGS)[1]
+    (tmp_path / other).mkdir()
+    pd.DataFrame([dict(row, dataset=other, basis="spline")]).to_csv(tmp_path / other / "tune_metrics.csv", index=False)
+    with pytest.raises(ValueError, match="differ in covariate basis"):
+        F.pgi_rows(str(tmp_path))
+    pd.DataFrame([dict(row, dataset=other)]).to_csv(tmp_path / other / "tune_metrics.csv", index=False)
+    assert len(F.pgi_rows(str(tmp_path))) == 2
