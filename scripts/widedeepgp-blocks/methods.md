@@ -939,6 +939,25 @@ simplification, are:
    ground that the server had no phasing tool; that ground is gone (bioconda installs SHAPEIT5 and bcftools), and
    whether a haplotype data product is worth building is what this pre-test decides.
 
+17. **Block weighting at the readout, and a table that never moved (18 November 2026, afternoon).** The fold-routed
+   quick test: the frozen copies rose for two epoch-equivalents and plateaued at 0.671 to 0.672 (best 0.6722 at 7.0,
+   budget 10; I10 0.713), the first LD-block run above the covariates, 0.001 below the logistic ridge twin on the same
+   channels; the two trained-copy runs (κ 10⁻³ and 10⁻²) sat on the frozen trajectory to the fourth decimal. The
+   trained tables, compared with their warm start, had moved by 1% of their own scale after 14,700 steps even at
+   κ 10⁻²: the table's Adam epsilon (2.5 × 10⁻⁷, set for a table at scale 10⁻⁴ starting from zero) throttles a table at
+   scale 0.35, so those runs did not test end-to-end training at all. Robert then asked whether the 431 blocks have no
+   weights of their own at the readout. They did not: the tokens pass a LayerNorm, which fixes each token's length, and
+   are averaged, so a block cannot raise its share and every disease reads one 64-number mean (the published DeepGP
+   pooled its 22 chromosome vectors with a learned attention; PRSformer found mean pooling over its variants
+   catastrophic). Two readouts added to blocks mode (`--final_pool`): `atten`, one learned query per disease over the
+   431 block tokens, each disease's logit from the shared head applied to its own pooled vector (uniform attention at
+   the start, so it begins as the mean; about 4,000 parameters at S3); `flat`, PRSformer's readout, the 432 tokens
+   flattened into one linear map to the 30 diseases (829,000 weights at S3, under the network's weight decay). Three
+   runs from the fold-routed warm start at S3, ten epoch-equivalents each, single trainings with the recipe's settings
+   (no search): the copies frozen with `atten` and with `flat`, against the frozen `mean` run above, and the copies
+   trained with `mean`, κ 10⁻² and epsilon 10⁻⁸, so that the table can move. The two throttled trained runs were
+   stopped at 7.5 and 6 epoch-equivalents and kept as records.
+
 ## References
 
 Kaplan J, McCandlish S, Henighan T, et al. Scaling laws for neural language models. arXiv
