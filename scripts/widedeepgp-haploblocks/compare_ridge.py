@@ -131,7 +131,9 @@ def logistic(x_train, y_train, xs):
 
 
 def ci(x):
-    """Point estimate (row 0) and the 2.5 and 97.5 percentiles of the bootstrap rows."""
+    """Point estimate (row 0) and the 2.5 and 97.5 percentiles of the bootstrap rows (NaN without bootstrap rows)."""
+    if len(x) == 1:
+        return float(x[0]), float("nan"), float("nan")
     return float(x[0]), float(np.percentile(x[1:], 2.5)), float(np.percentile(x[1:], 97.5))
 
 
@@ -213,11 +215,12 @@ def main(argv=None):
     # 2. evaluation: penalty chosen on the out-of-fold training rows; metrics there and on the tuning set
     R = y - np.column_stack([np.ones(len(y)), cov]) @ B[K_FOLDS]
     sets = {"oof_train": slice(0, n_tr), "val": slice(n_tr, None)}
-    Wt = {k: boot_weights(len(range(*sl.indices(len(y)))), a.n_boot) for k, sl in sets.items()}
+    Wt_all = {k: boot_weights(len(range(*sl.indices(len(y)))), a.n_boot) for k, sl in sets.items()}
     choice = {p: choose(S[p][:n_tr], y[:n_tr], n_pen) for p in PARAMS}
     fixed = {p: np.full(n_lab, a.h2.index(0.15) if 0.15 in a.h2 else n_pen // 2) for p in PARAMS}
     rows_out, pooled = [], []
     for tag, ch in (("chosen", choice), ("h2_0.15", fixed)):
+        Wt = {k: w if tag == "chosen" else w[:1] for k, w in Wt_all.items()}    # the fixed penalty: point estimates only
         boots = {}                                             # (metric, set, param, j) -> bootstrap rows
         for j, lab in enumerate(rung.labels):
             cov_logit = logistic(cov[:n_tr], y[:n_tr, j], [cov[:n_tr], cov[n_tr:]])

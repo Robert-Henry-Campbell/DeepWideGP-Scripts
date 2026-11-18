@@ -131,13 +131,13 @@ def export(a):
 
 
 def check(a):
-    """The BCF's ALT allele frequency per variant against the hard calls'; REF/ALT against the store's."""
+    """The BCF's INFO/AF per variant (bcftools +fill-tags) against the hard calls'; REF/ALT against the store's."""
     rung = Rung(a.dataset_dir)
     out = os.path.join(rung.dir, "haplo")
     af0 = np.load(os.path.join(out, f"chr{a.chrom}_hardcall_af.npy"))
     var = rung.store.variants(a.chrom)
-    cmd = f"bcftools +fill-tags {a.check} -- -t AF | bcftools query -f '%POS\\t%REF\\t%ALT\\t%INFO/AF\\n'"
-    txt = subprocess.run(cmd, shell=True, check=True, capture_output=True, text=True).stdout.splitlines()
+    cmd = ["bcftools", "query", "-f", "%POS\\t%REF\\t%ALT\\t%INFO/AF\\n", a.check]
+    txt = subprocess.run(cmd, check=True, capture_output=True, text=True).stdout.splitlines()
     if len(txt) != len(var["pos"]):
         raise SystemExit(f"{a.check}: {len(txt)} variants against the store's {len(var['pos'])}")
     pos, ref, alt, af = zip(*(l.split("\t") for l in txt))

@@ -296,7 +296,10 @@ def test_compare_ridge_runs_end_to_end_on_the_synthetic_store_and_reproduces_the
     n_lab = len(rung.labels)
     assert len(table) == 2 * n_lab and set(table["penalties"]) == {"chosen", "h2_0.15"}
     assert (table["h2_snp"].isin(cr.H2)).all() and table["dauroc_snp_val"].notna().all()
-    assert len(pooled) == 2 * 2 * 2 * 2 and (pooled["lo"] <= pooled["mean_diff"]).all() and (pooled["mean_diff"] <= pooled["hi"]).all()
+    boot, fixed = pooled[pooled["penalties"] == "chosen"], pooled[pooled["penalties"] == "h2_0.15"]
+    assert len(pooled) == 2 * 2 * 2 * 2 and len(boot) == len(fixed) == 8
+    assert (boot["lo"] <= boot["mean_diff"]).all() and (boot["mean_diff"] <= boot["hi"]).all()
+    assert fixed["lo"].isna().all() and fixed["mean_diff"].notna().all()         # the fixed penalty: point estimates only
     assert (pooled["n_positive"] + pooled["n_negative"] <= n_lab).all()
     sc = np.load(os.path.join(haplo, "scores_chr1_f0.01_c0.95.npz"), allow_pickle=True)
     assert sc["score_snp"].shape == (len(rows), len(cr.H2) * n_lab) and (sc["iid"] == iid).all()

@@ -23,12 +23,17 @@ if [ ! -f "$H/export.json" ]; then
       --map "$ROOT/data/pgi/ld/genetic_maps/omni/chr22.OMNI.interpolated_genetic_map.gz" >> "$LOG" 2>&1 || fail export
 fi
 if [ ! -f "$H/chr22_unphased.bcf.csi" ]; then
-  step "plink2 to BCF"
-  $PLINK2 --bfile "$H/chr22_hardcalls" --export bcf --out "$H/chr22_unphased" --threads 4 --memory 16000 >> "$LOG" 2>&1 || fail plink2
+  if [ ! -f "$H/chr22_plink.bcf" ]; then
+    step "plink2 to BCF"
+    $PLINK2 --bfile "$H/chr22_hardcalls" --export bcf --out "$H/chr22_plink" --threads 4 --memory 16000 >> "$LOG" 2>&1 || fail plink2
+  fi
+  step "AC/AN/AF tags (phase_common needs AC and AN)"
+  bcftools +fill-tags "$H/chr22_plink.bcf" -Ob -o "$H/chr22_unphased.bcf" --threads 4 -- -t AC,AN,AF >> "$LOG" 2>&1 || fail fill_tags
   bcftools index -f "$H/chr22_unphased.bcf" || fail index
-  chmod 600 "$H"/chr22_unphased.*
+  chmod 600 "$H"/chr22_unphased.* "$H"/chr22_plink.*
   step "check allele frequencies"
   $PY "$HERE/export_chr22.py" "$DS" --chrom 22 --check "$H/chr22_unphased.bcf" >> "$LOG" 2>&1 || fail check
+  rm -f "$H/chr22_plink.bcf"
 fi
 if [ ! -f "$H/chr22_phased.bcf.csi" ]; then
   step "phase_common"
