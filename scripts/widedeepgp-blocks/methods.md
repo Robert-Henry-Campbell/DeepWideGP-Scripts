@@ -919,6 +919,24 @@ simplification, are:
    (κ 10⁻³, no decay). The in-sample files are kept as `init_ridge_d16_insample.pt` (scaled) and
    `init_ridge_d16_unscaled.pt`; T0 and the item-14 diagnostics stand as records of the in-sample warm start.
 
+16. **A pre-test of the haploblock first layer on chromosome 22 (18 November 2026).** Robert proposed replacing the
+   per-SNP table with one vector per common haplotype of about 100,000 short haploblocks: not for new signal but for
+   fewer, orthogonal parameters within a block (haplotype indicators are mutually exclusive where dosages are
+   collinear). Before the two-week build (genome-wide phasing, a haplotype store, an input mode, a haplotype warm
+   start), one chromosome answers two questions: the arithmetic (how many blocks, how many common haplotypes each, how
+   many first-layer parameters against the 1,258,200 SNP profiles) and the signal (does a closed-form ridge on
+   haplotype counts beat the ridge on SNP dosages out of sample, on the same SNPs, participants, folds, residualised
+   labels and shrinkage grid; a ridge on both bounds the haplotype-specific signal). The ridge of a parametrisation is
+   what a network on it can at best match at this N (items 14 and 15), so a haplotype ridge that does not beat the
+   SNP ridge rules out the layer. Design, decisions and the pre-stated decision rule: `../widedeepgp-haploblocks/methods.md`
+   (SHAPEIT5 5.1.1 on the training and tuning rows' hard calls, the test split never read; haploblocks nested in the
+   Prive blocks by a coverage rule, f = 1%, c = 95%, with a nine-cell sensitivity grid; penalties λ = M_class / h² on a
+   five-point h² grid chosen on the out-of-fold training rows; paired participant bootstrap on the tuning set and the
+   out-of-fold training rows). Launched 15:36Z as two detached chains (`run_phase_chr22.sh`, `run_analysis_chr22.sh`);
+   results in that folder's `results.md` when they arrive. Section 10 puts phased features out of scope on the
+   ground that the server had no phasing tool; that ground is gone (bioconda installs SHAPEIT5 and bcftools), and
+   whether a haplotype data product is worth building is what this pre-test decides.
+
 ## References
 
 Kaplan J, McCandlish S, Henighan T, et al. Scaling laws for neural language models. arXiv
