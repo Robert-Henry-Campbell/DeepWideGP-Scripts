@@ -187,3 +187,34 @@ on average over the nine with at least 20,000 training cases). Attention and mea
 Seed replicates of the no-mask frozen mean run (seeds 2 and 3) and of the no-mask recipe with the flat readout (seeds 1
 and 2) started on 18 November at 21:55Z (`run_diag_seeds.sh`); their rows will be added here.
 
+
+## The linear comparators across the ladder, and the warm starts of every rung (18 November 2026)
+
+Means over the 30 diseases of the tuning-set AUROC (`results/<rung>/blocks_linear.csv`). Every model is fitted on the
+rung's training rows with the 12 covariates unpenalised; the covariates-only column was fitted for this table by one
+unpenalised logistic regression per disease on the same training rows, so it sits below the PGI arm's covariates-only
+reference, which is the shared protocol's in-sample refit on the tuning set (0.6653 at the bottom rung, linear basis).
+The twin's penalty was chosen on the tuning set over the grid 1e2 to 1e6.
+
+| rung (training rows) | covariates only | logistic ridge twin | twin on its training rows | ridge PRS + covariates | twin − covariates | PRS − covariates | twin beats PRS (of 30) | twin penalty at the grid's upper edge (of 30) |
+|---|---|---|---|---|---|---|---|---|
+| 13,199 | 0.6598 | 0.6603 | 0.7021 | 0.6611 | +0.0005 | +0.0013 | 9 | 27 |
+| 26,287 | 0.6613 | 0.6619 | 0.6932 | 0.6638 | +0.0006 | +0.0025 | 6 | 29 |
+| 53,498 | 0.6620 | 0.6633 | 0.6928 | 0.6670 | +0.0013 | +0.0050 | 0 | 28 |
+| 107,743 | 0.6625 | 0.6671 | 0.7156 | 0.6718 | +0.0046 | +0.0093 | 2 | 20 |
+| 215,872 | 0.6627 | 0.6732 | 0.7286 | 0.6777 | +0.0104 | +0.0149 | 3 | 12 |
+
+The plain cross-fitted PRS beats the twin at every rung, by 0.0008 at the bottom and 0.0045 at the top, and the
+twin's penalty sits at the grid's upper edge for most diseases at every rung: 38,790 free coefficients on the channels
+are too many at these N, and the single fixed combination of the same channels is the better linear use of them. Both
+gains over the covariates grow with N (the PRS from +0.0013 to +0.0149). Rung 26,287's ridge check
+(`results/hm3plus_n26287/check_block_ridge.md`, built with its twins on 18 November, 22:08 to 22:59Z, 10 threads):
+out-of-fold training AUROC 0.5262 against tuning 0.5272 at the chosen penalty, 27 of 30 diseases within 2 SE,
+pseudo-fold variance ratio median 0.999 (0.962 to 1.025).
+
+**Warm starts of every rung.** All five `blocks/init_ridge_d16.pt` files are now the fold-routed kind of methods.md
+item 15: five copies of the 22 tables, one per fold of the block ridge, in the full ridge's rank-16 basis, scaled so the
+pooled block tokens have unit RMS (entry RMS 0.273, 0.282, 0.297, 0.319 and 0.350 from the bottom rung to the top), made
+18 November 21:57 to 22:08Z on GPU 2 (`runs/blocks/run_lin_rest.sh`, two to three minutes a rung, variance kept 0.75).
+The earlier single-copy, unscaled files are kept beside them as `init_ridge_d16_unscaled.pt` and are used by nothing.
+
