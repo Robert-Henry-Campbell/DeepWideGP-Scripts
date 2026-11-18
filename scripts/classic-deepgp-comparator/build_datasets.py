@@ -15,10 +15,16 @@ one pass over the main store, chromosome by chromosome. A dataset folder
 Afterwards, the genotypes of 200 participants on every selected SNP of chromosomes 1, 6 and 22
 are compared with the main store.
 
+With several diseases (Robert, 18 November 2026) the SNPs are those with p <= 0.05 in any of their
+GWAS, clumped once with each SNP's smallest p over the diseases choosing the index SNPs: the classic
+selection extended to the 30-disease model (`--diseases`, `--name`; `--rungs` restricts the sizes).
+One disease gives the classic selection exactly.
+
 Prints and logs counts only, never an identifier or a genotype. Participant-level files are
 written only under /mnt/sdg/robert/deepwidegp/data, owner-only.
 
     python build_datasets.py --threads 8
+    python build_datasets.py --threads 8 --name classic30 --rungs hm3plus --diseases I10 E78 ... I21
 """
 from __future__ import annotations
 
@@ -66,19 +72,38 @@ def private(path):
             os.chmod(os.path.join(root, f), 0o600)
 
 
-def leads(rung, workdir, threads):
-    """The I10 lead SNPs with p <= P_MAX of one training size: plink2 clumping on the LD panel.
-    With --clump-p1 P_MAX and --clump-p2 1, the leads are those the greedy clumping of all SNPs
-    gives (as the PGI arm's C+T), kept where p <= P_MAX."""
-    ss = pd.read_csv(f"{DATA}/pgi/gwas_sumstats/{rung}/{DISEASE}.sumstats.tsv.gz", sep="\t",
-                     usecols=["CHR", "SNP", "P"], dtype={"SNP": str, "CHR": str})
-    n_tested = len(ss)
+def min_p(tables):
+    """One [SNP, P] table from several (the same SNPs, in any order): each SNP's smallest finite p over
+    them, NaN where none is finite."""
+    first = tables[0].set_index("SNP")["P"]
+    cols = [first]
+    for t in tables[1:]:
+        other = t.set_index("SNP")["P"]
+        if len(other) != len(first) or not other.index.isin(first.index).all():
+            raise ValueError("the summary statistics do not hold the same SNPs")
+        cols.append(other.reindex(first.index))
+    p = np.vstack([c.to_numpy(dtype=float) for c in cols])
+    best = np.where(np.isfinite(p), p, np.inf).min(axis=0)
+    return pd.DataFrame({"SNP": first.index.to_numpy(), "P": np.where(np.isfinite(best), best, np.nan)})
+
+
+def leads(rung, diseases, name, workdir, threads):
+    """The lead SNPs with p <= P_MAX of one training size: plink2 clumping on the LD panel of each SNP's
+    smallest p over the diseases' GWAS (one disease: that GWAS). With --clump-p1 P_MAX and --clump-p2 1,
+    the leads are those the greedy clumping of all SNPs gives (as the PGI arm's C+T), kept where p <= P_MAX."""
+    tables = []
+    for d in diseases:
+        t = pd.read_csv(f"{DATA}/pgi/gwas_sumstats/{rung}/{d}.sumstats.tsv.gz", sep="\t",
+                        usecols=["CHR", "SNP", "P"], dtype={"SNP": str, "CHR": str})
+        if t["SNP"].duplicated().any():
+            raise ValueError(f"{rung} {d}: repeated SNP ids in the summary statistics")
+        tables.append(t)
+    n_tested = len(tables[0])
+    ss = min_p([t[["SNP", "P"]] for t in tables])
     ss = ss[np.isfinite(ss["P"].to_numpy(dtype=float))]
-    if ss["SNP"].duplicated().any():
-        raise ValueError(f"{rung}: repeated SNP ids in the summary statistics")
-    inp = os.path.join(workdir, f"{rung}_{DISEASE}_p.tsv")
+    inp = os.path.join(workdir, f"{rung}_{name}_p.tsv")
     ss[["SNP", "P"]].to_csv(inp, sep="\t", index=False, float_format="%.17g")
-    out = os.path.join(workdir, f"{rung}_{DISEASE}")
+    out = os.path.join(workdir, f"{rung}_{name}")
     env = dict(os.environ, OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1", MKL_NUM_THREADS="1")
     cmd = [PLINK2, "--bfile", PANEL, "--clump", inp, "--clump-id-field", "SNP", "--clump-p-field", "P",
            "--clump-p1", f"{P_MAX:g}", "--clump-p2", "1", "--clump-r2", f"{R2:g}", "--clump-kb", str(KB),
@@ -100,7 +125,12 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--threads", type=int, default=8)
     ap.add_argument("--work", default=f"{DATA}/classic_deepgp_work")
+    ap.add_argument("--diseases", nargs="+", default=[DISEASE],
+                    help="the GWAS whose p <= 0.05 SNPs are kept (several: in any of them, clumped once on the smallest p)")
+    ap.add_argument("--rungs", nargs="+", default=list(SIZES), choices=list(SIZES), help="the training sizes to build")
+    ap.add_argument("--name", default="classic_i10", help="dataset and store prefix: <name>_n<size>")
     a = ap.parse_args(argv)
+    sizes = {r: SIZES[r] for r in a.rungs}
     sys.path.insert(0, REPO)
     from genostore import format as gf
     from genostore.store import GenoStore
@@ -114,19 +144,20 @@ def main(argv=None):
 
     # ---- the SNPs and participants of each size
     plan, logs = {}, {}
-    for rung, size in SIZES.items():
-        lead_ids, counts, p_by_id = leads(rung, a.work, a.threads)
+    for rung, size in sizes.items():
+        lead_ids, counts, p_by_id = leads(rung, a.diseases, a.name, a.work, a.threads)
         sel, topped = {}, {}
         for c in chroms:
             ids_c = variants[c]["id"]
-            idx = np.flatnonzero(np.isin(ids_c, list(lead_ids)))
+            # set lookups: np.isin on string (object) arrays compares every pair, hours per chromosome
+            idx = np.flatnonzero(np.fromiter((i in lead_ids for i in ids_c), dtype=bool, count=len(ids_c)))
             if len(idx) < MIN_PER_CHROM:              # a sequence needs a few SNPs: the next strongest
                 p_c = np.array([p_by_id.get(i, np.inf) for i in ids_c])
                 extra = [j for j in np.argsort(p_c, kind="stable") if j not in set(idx)][:MIN_PER_CHROM - len(idx)]
                 topped[c] = len(extra)
                 idx = np.sort(np.concatenate([idx, np.asarray(extra, dtype=np.int64)]))
             sel[c] = idx.astype(np.int64)
-        found = sum(int(np.isin(variants[c]["id"], list(lead_ids)).sum()) for c in chroms)
+        found = sum(sum(1 for i in variants[c]["id"] if i in lead_ids) for c in chroms)
         if found != len(lead_ids):
             raise RuntimeError(f"{rung}: {len(lead_ids) - found} lead SNPs are not in the genotype store")
         train_ids = table_ids(f"{DS}/{rung}/samples_train.tsv")
@@ -138,25 +169,27 @@ def main(argv=None):
             raise RuntimeError(f"{rung}: a participant is in two of the sample tables")
         plan[rung] = {"sel": sel, "rows": rows}
         logs[rung] = {**counts, "snps": int(sum(len(v) for v in sel.values())), "chromosomes_topped_up": topped,
+                      "diseases": a.diseases, "selection": f"p <= {P_MAX} in any disease's GWAS, clumped once on the smallest p",
                       "participants": {"train": len(train_ids), "val": len(val_ids), "test": len(test_ids)}}
         log(f"{rung}: {counts['lead_snps']} lead SNPs with p <= {P_MAX} ({counts['snps_p_at_most_threshold']} SNPs with "
             f"p <= {P_MAX} of {counts['snps_tested']}); {len(rows)} participants")
 
     # ---- one pass over the main store, chromosome by chromosome
     union = np.unique(np.concatenate([p["rows"] for p in plan.values()]))
-    out_store = {r: f"{DATA}/genostore/classic_i10_n{SIZES[r]}" for r in SIZES}
+    out_store = {r: f"{DATA}/genostore/{a.name}_n{sizes[r]}" for r in sizes}
     for r, path in out_store.items():
         if os.path.exists(path):
             raise RuntimeError(f"{path} exists: move it aside before building again")
         ids_sorted = [str(main_store.samples[i]) for i in plan[r]["rows"]]
         gf.create_store(path, ids_sorted, gf.BLOCK_VARIANTS,
-                        {"selected_from": MAIN, "disease": DISEASE, "gwas": f"{DATA}/pgi/gwas_sumstats/{r}",
+                        {"selected_from": MAIN, "diseases": a.diseases, "gwas": f"{DATA}/pgi/gwas_sumstats/{r}",
+                         "selection": f"p <= {P_MAX} in any disease's GWAS, clumped once on the smallest p",
                          "p_max": P_MAX, "clump_r2": R2, "clump_kb": KB, "ld_panel": PANEL})
     w = main_store.w
     for c in chroms:
         t0 = time.time()
-        need = np.unique(np.concatenate([plan[r]["sel"][c] for r in SIZES]))
-        arrays = {r: np.empty((len(plan[r]["rows"]), len(plan[r]["sel"][c])), dtype=np.uint8) for r in SIZES}
+        need = np.unique(np.concatenate([plan[r]["sel"][c] for r in sizes]))
+        arrays = {r: np.empty((len(plan[r]["rows"]), len(plan[r]["sel"][c])), dtype=np.uint8) for r in sizes}
         for b0 in range(0, main_store.n_variants(c), w):
             b1 = min(main_store.n_variants(c), b0 + w)
             cols = need[(need >= b0) & (need < b1)]
@@ -165,7 +198,7 @@ def main(argv=None):
             for i0 in range(0, len(union), ROW_CHUNK):
                 urows = union[i0:i0 + ROW_CHUNK]
                 q = main_store.read_q(c, urows, b0, b1)
-                for r in SIZES:
+                for r in sizes:
                     rows_r, sel_r = plan[r]["rows"], plan[r]["sel"][c]
                     in_r = np.isin(urows, rows_r)
                     want = (sel_r >= b0) & (sel_r < b1)
@@ -173,7 +206,7 @@ def main(argv=None):
                         continue
                     ri = np.searchsorted(rows_r, urows[in_r])
                     arrays[r][np.ix_(ri, np.flatnonzero(want))] = q[np.ix_(np.flatnonzero(in_r), sel_r[want] - b0)]
-        for r in SIZES:
+        for r in sizes:
             sel_r = plan[r]["sel"][c]
             v = variants[c]
             lines = (f"{c}\t{int(v['pos'][j])}\t{v['id'][j]}\t{v['ref'][j]}\t{v['alt'][j]}" for j in sel_r)
@@ -197,7 +230,7 @@ def main(argv=None):
         if bad:
             raise RuntimeError(f"{path}: {bad} genotypes differ from the main store")
         spec = json.load(open(f"{DS}/{r}/store.json"))
-        out = f"{DS}/classic_i10_n{SIZES[r]}"
+        out = f"{DS}/{a.name}_n{sizes[r]}"
         os.makedirs(out, mode=0o700, exist_ok=True)
         with open(f"{out}/store.json", "w") as f:
             json.dump({"store": path, "pos_mode": "index", "labels": spec["labels"], "covariates": spec["covariates"]},
@@ -215,7 +248,7 @@ def main(argv=None):
             json.dump(logs[r], f, indent=1)
         log(f"{r}: dataset {out} ({logs[r]['snps']} SNPs), check passed")
     print(json.dumps({r: {k: v for k, v in logs[r].items() if k in ("lead_snps", "snps", "chromosomes_topped_up")}
-                      for r in SIZES}, indent=1))
+                      for r in sizes}, indent=1))
     print("done", flush=True)
 
 

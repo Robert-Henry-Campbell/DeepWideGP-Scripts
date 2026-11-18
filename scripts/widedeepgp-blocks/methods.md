@@ -845,6 +845,21 @@ simplification, are:
    no-initialisation ablation that had started under the old objective was stopped after 1.5 hours and is rerun
    under the new one.
 
+13. **The comparators in two phases, so that the warm start does not wait for the linear twins (18 November
+   2026).** The chain had T0 and a rung's grid wait for the rung's whole comparator pipeline, whose last two
+   steps (the ridge check and the per-disease logistic ridge twin, about 19 minutes per disease at the top rung)
+   run on the CPU and are not needed for the warm start; two GPUs sat reserved and idle for hours while the top
+   rung's twin ran. `chains/run_chain.py` now runs each rung's folds, block ridge and warm start as one GPU phase
+   (the GPU reserved for the build, released when the phase ends) and the ridge check and the linear twins as a
+   CPU phase beside the training; T0 and the grid wait for the warm-start file only, and every step is skipped
+   where its product exists (`blocks/folds.npz`, `blocks.json`, `blocks/init_ridge_d16.pt`,
+   `results/<rung>/check_block_ridge.md`, `results/<rung>/blocks_linear.csv`). `fit_block_linear.py` resumes per
+   disease (`blocks/blocks_linear_partial.npz`, removed when its table is written). The chain was relaunched
+   with these changes in the night of 17 to 18 November (`chain.log`); the two twin fits then running
+   restarted (the block ridges and the ridge checks were kept), and the no-initialisation ablation search
+   resumed its finished trials. The fitted models and the comparators do not change: the same steps run, in
+   another order.
+
 ## References
 
 Kaplan J, McCandlish S, Henighan T, et al. Scaling laws for neural language models. arXiv

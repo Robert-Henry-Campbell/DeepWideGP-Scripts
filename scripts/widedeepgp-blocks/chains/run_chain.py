@@ -4,9 +4,11 @@ document sections 5, 7 and 12; Robert, 17 November 2026: no simulated-trait gate
 the rungs; the side studies after the grid). One process runs every cell in order from a frozen export of
 DeepWideGP's `widening` branch:
 
-    lin        the closed-form block ridge, the linear twins and the ridge warm start per rung: the top rung on
-               one GPU (about a day), the other rungs one after another on a second; T0 and a rung's grid wait
-               for that rung's warm start, and the no-initialisation ablation runs meanwhile
+    lin        the comparators per rung in two phases. On a GPU, reserved for the build and released when the phase
+               ends: the folds, the closed-form block ridge and the ridge warm start, the top rung on one GPU and
+               the other rungs in turn on a second. On the CPU, beside the training: the ridge check and the
+               linear twins. T0 and a rung's grid wait for that rung's warm start only; the no-initialisation
+               ablation runs meanwhile; a step whose product exists is skipped (18 November 2026)
     t0         the pre-test: S1, S3, S5 once each at the top rung, fixed settings, from the ridge warm start
     grid       5 sizes x 2 mixers per rung, rung by rung from 215,872 down to 13,199 participants, on the Prive
                partition, dosage code, from the ridge warm start
@@ -137,22 +139,39 @@ def free_gpus(limit=MAX_GPUS):
 
 
 # ---- the linear comparators (Scripts step 7) -------------------------------------------------------
-def lin(ds, gpu, splits):
-    """Folds, the block ridge, the linear twins and the warm start of one dataset; skipped where done."""
-    d = dataset(ds)
-    if os.path.exists(f"{d}/blocks/init_ridge_d16.pt") and os.path.exists(f"{d}/blocks/prs_val.npz"):
+def lin_steps(ds, phase):
+    """One dataset's comparator steps as (product, command): the ``gpu`` phase (the folds, the block ridge, the
+    warm start) or the ``cpu`` phase (the ridge check, the linear twins). A step whose product exists is skipped."""
+    d, res = dataset(ds), f"{SCRIPTS}/results/{ds}"
+    if phase == "gpu":
+        return [(f"{d}/blocks/folds.npz", [PY, f"{SCRIPTS}/make_folds.py", d, "--splits", *SPLITS]),
+                (f"{d}/blocks.json", [PY, f"{SCRIPTS}/build_block_ridge.py", d, "--partition", f"{PART}/prive431",
+                                      "--splits", *SPLITS, "--threads", THREADS]),
+                (f"{d}/blocks/init_ridge_d16.pt", [PY, f"{SCRIPTS}/make_warm_start.py", d, "--embed_dim", "16"])]
+    if phase == "cpu":
+        return [(f"{res}/check_block_ridge.md", [PY, f"{SCRIPTS}/check_block_ridge.py", d, "--partition", f"{PART}/prive431"]),
+                (f"{res}/blocks_linear.csv", [PY, f"{SCRIPTS}/fit_block_linear.py", d])]
+    raise ValueError(f"unknown phase {phase}")
+
+
+def lin(ds, phase):
+    """Runs the steps of one dataset's phase whose product is missing (the cpu phase once the block ridge exists);
+    returns the exit code (1 when a step ends without its product)."""
+    todo = [(p, cmd) for p, cmd in lin_steps(ds, phase) if not os.path.exists(p)]
+    if not todo:
         return 0
-    log(f"lin {ds}: starting on GPU {gpu if gpu is not None else os.environ.get('CUDA_VISIBLE_DEVICES', '?')}")
-    for cmd in ([PY, f"{SCRIPTS}/make_folds.py", d, "--splits", *splits],
-                [PY, f"{SCRIPTS}/build_block_ridge.py", d, "--partition", f"{PART}/prive431", "--splits", *splits, "--threads", THREADS],
-                [PY, f"{SCRIPTS}/check_block_ridge.py", d, "--partition", f"{PART}/prive431"],
-                [PY, f"{SCRIPTS}/fit_block_linear.py", d],
-                [PY, f"{SCRIPTS}/make_warm_start.py", d, "--embed_dim", "16"]):
-        rc = sh(cmd, f"lin_{ds}", gpu=gpu)
-        if rc:
-            log(f"lin {ds}: {os.path.basename(cmd[1])} exit {rc}; chain stopped")
-            return rc
-    log(f"lin {ds}: done")
+    while phase == "cpu" and not os.path.exists(f"{dataset(ds)}/blocks.json"):
+        if os.getppid() == 1:                                 # the chain is gone: no ridge will come
+            return 1
+        time.sleep(300)
+    log(f"lin {ds} {phase}: starting" + (f" on GPU {os.environ.get('CUDA_VISIBLE_DEVICES', '?')}" if phase == "gpu" else ""))
+    for product, cmd in todo:
+        rc = sh(cmd, f"lin_{ds}_{phase}")
+        if rc or not os.path.exists(product):
+            log(f"lin {ds} {phase}: {os.path.basename(cmd[1])} exit {rc}, {os.path.basename(product)} "
+                f"{'written' if os.path.exists(product) else 'missing'}; chain stopped")
+            return rc or 1
+    log(f"lin {ds} {phase}: done")
     return 0
 
 
@@ -290,18 +309,21 @@ def main():
     log(f"chain starting from {CODE}, pid {os.getpid()}")
     seeds = Seeds()
     down = RUNGS[::-1]                                       # the top rung first
-    # the linear comparators and warm starts: the top rung on one GPU (about a day), the other rungs in turn on a
-    # second, each GPU reserved for its build; the no-initialisation ablation at the top rung runs on the rest
+    # the comparators' GPU phases (folds, block ridge, warm start): the top rung on one GPU, the other rungs in turn
+    # on a second, each reserved for its build and released when the phase ends; the CPU phases (the ridge check,
+    # the linear twins) beside the training; the no-initialisation ablation at the top rung runs on the rest
     gpus = free_gpus()
-    lin_top = spawn([PY, __file__, "lin_one", TOP], f"lin_{TOP}", gpus[0])
-    lin_rest = spawn([PY, __file__, "lin_rest"], "lin_rest", gpus[-1])
+    lin_top = spawn([PY, __file__, "lin", "gpu", "one", TOP], f"lin_{TOP}_gpu", gpus[0])
+    lin_rest = spawn([PY, __file__, "lin", "gpu", "rest"], "lin_rest_gpu", gpus[-1])
     RESERVED.update({gpus[0]: lin_top, gpus[-1]: lin_rest})   # a build fills its GPU (eigh of a 15,000-SNP block)
+    twins = [spawn([PY, __file__, "lin", "cpu", "one", TOP], f"lin_{TOP}_cpu", ""),
+             spawn([PY, __file__, "lin", "cpu", "rest"], "lin_rest_cpu", "")]
     abl_none = [(cell_name(m, "S3", "prive431", "dosage", "none", TOP), flags(m, "S3", "prive431", "dosage", "none", TOP), None)
                 for m in MIXERS]
     run_cells(abl_none, seeds)
     if lin_top.wait():
-        raise RuntimeError(f"the linear comparators of {TOP} failed; see logs/lin_{TOP}.log")
-    log(f"lin {TOP}: comparators and warm start ready")
+        raise RuntimeError(f"the block ridge or the warm start of {TOP} failed; see logs/lin_{TOP}_gpu.log")
+    log(f"lin {TOP}: warm start ready")
     top_init = init_file(INIT, TOP, "prive431", 16, "dosage", free_gpus()[0])
 
     # t0: three single runs at the top rung from the warm start, the slowest first, in waves over the free GPUs
@@ -326,13 +348,13 @@ def main():
         if r != TOP:
             while not os.path.exists(f"{dataset(r)}/blocks/init_ridge_d16.pt"):
                 if lin_rest.poll() is not None:
-                    raise RuntimeError("the other rungs' linear comparators failed; see logs/lin_rest.log")
+                    raise RuntimeError("the other rungs' block ridge or warm start failed; see logs/lin_rest_gpu.log")
                 time.sleep(300)
         init_r = init_file(INIT, r, "prive431", 16, "dosage", free_gpus()[0])
         run_cells([(cell_name(m, z, "prive431", "dosage", INIT, r), flags(m, z, "prive431", "dosage", INIT, r), init_r)
                    for z in SIZES for m in MIXERS], seeds)
     if lin_rest.wait():
-        raise RuntimeError("the other rungs' linear comparators failed; see logs/lin_rest.log")
+        raise RuntimeError("the other rungs' block ridge or warm start failed; see logs/lin_rest_gpu.log")
 
     # side studies at the top rung: partition sweep, ablations (the warm start needs the top rung's ridge), table width, shapes
     # side studies at the top rung: the partition sweep (the warm-start table is per SNP, so the same file serves every
@@ -362,6 +384,9 @@ def main():
                   init_file(INIT, r, "prive431", e, "dosage", free_gpus()[0])) for e in (4, 64) for m in MIXERS]
         run_cells(rest, seeds)
 
+    for p in twins:                                          # the ridge checks and linear twins, before the tables
+        if p.wait():
+            raise RuntimeError("a ridge check or linear twin failed; see logs/lin_*_cpu.log")
     # score: the chosen model of every cell and its seed retrains on the tuning set, scores saved under data/
     for name in sorted(os.listdir(OUT)):
         run = f"{OUT}/{name}"
@@ -377,21 +402,15 @@ def main():
     log("chain finished: every queued cell done; E5 (held-out groups), E6 (h2 scan) and E7 are separate steps")
 
 
-def lin_one(ds):
-    if lin(ds, None, SPLITS):                               # the GPU is the one this process was given
-        raise SystemExit(1)
-
-
-def lin_rest():
-    for ds in RUNGS[::-1][1:]:
-        if lin(ds, None, SPLITS):
+def lin_main(phase, which, ds=None):
+    """``lin gpu|cpu one <rung>``: one rung's phase; ``lin gpu|cpu rest``: the other rungs' in turn, top down."""
+    for r in ([ds] if which == "one" else RUNGS[::-1][1:]):
+        if lin(r, phase):
             raise SystemExit(1)
 
 
 if __name__ == "__main__":
-    if sys.argv[1:2] == ["lin_one"]:
-        lin_one(sys.argv[2])
-    elif sys.argv[1:] == ["lin_rest"]:
-        lin_rest()
+    if sys.argv[1:2] == ["lin"]:
+        lin_main(*sys.argv[2:])
     else:
         main()

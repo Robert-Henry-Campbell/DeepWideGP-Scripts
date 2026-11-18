@@ -92,3 +92,33 @@ Each size is evaluated with the protocol shared by both arms:
 - **Final prediction:** a logistic regression, fitted on the tuning set, of I10 on the model's
   logit plus the covariate basis.
 - **The test set:** opened once, for both arms together.
+
+## The 30-disease variant at the top rung (Robert, 18 November 2026)
+
+A second comparator asks whether the multi-disease output alone, without the LD-block first layer
+or any other change of WideDeepGP's architecture, improves prediction. It is the classic DeepGP
+network with 30 outputs, trained once at the top rung (215,872 training participants).
+
+- **SNPs.** The classic rule applied to the 30 GWAS together: the SNPs with p ≤ 0.05 in any of the
+  30 top-rung REGENIE GWAS (1,034,524 of the 1,258,200, 82%), clumped once at r² 0.1 within 250 kb
+  on the LD panel, with each SNP's smallest p over the 30 diseases choosing the index SNPs:
+  179,566 lead SNPs (`build_datasets.py --diseases <the 30> --name classic30 --rungs hm3plus`;
+  dataset `data/datasets/ard30/classic30_n215872`). For comparison, the per-disease classic sets
+  hold 21,328 to 28,536 leads (mean 23,546; I10 28,536), and their union 454,876 SNPs, of which
+  171,110 are among the 179,566. One disease gives the classic selection exactly, so the five I10
+  datasets are the same builder's default.
+- **Model and training.** As the I10 run: width 32, one layer, four heads, attention pooling, a
+  256-unit head, fp32, batch 64, AdamW at 7 × 10⁻⁴ with weight decay 10⁻⁴, dropout 0.2, plain
+  cross-entropy (uniform shuffled batches, no class weight; the mean over the 30 diseases), the
+  twelve covariates, patience 8, the 30-epoch budget. One training with the published settings
+  (`--tune_trials 0`, seed 1), no search, matched to the single-disease quick run
+  `classic_i10_n215872_quick` (the same frozen code, `runs/blocks/code_0094e74`). Launcher
+  `runs/classic_deepgp/run_classic30_n215872.sh`; run folder `runs/classic_deepgp/classic30_n215872/`.
+- **Reading.** Per disease, the tuning AUROC beside the covariate-only floor, the PGI arm's methods
+  and the LD-block runs (T0), and for I10 beside the single-disease classic run. A caveat recorded
+  before the run: the classic network pools the genome into one 32-wide vector before the head, so
+  the 30 diseases share a narrow bottleneck; no gain means that multi-disease training does not
+  rescue this architecture, not that it cannot help a wider one.
+- **Cost.** About 23 GB at batch 64 and about 1.1 h per epoch-equivalent (from the measured
+  per-SNP memory and time of the published model), so about 3.5 h for a run that stops on patience
+  and 33 h at the budget.

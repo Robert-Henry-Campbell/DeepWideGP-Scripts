@@ -425,3 +425,31 @@ def remove_synthetic_results():
     """The synthetic runs write results/store/ beside the real rungs' folders; drop it afterwards."""
     yield
     shutil.rmtree(os.path.join(HERE, "results", "store"), ignore_errors=True)
+
+
+def test_fit_block_linear_resumes_per_disease(built, monkeypatch):
+    """Interrupted after two diseases, a rerun continues from the partial file and reproduces the uninterrupted run."""
+    ref = fit_block_linear.main([built["dir"], "--lam_grid", "10", "1000"])
+    score = os.path.join(built["dir"], "scores", "blocks_linear", "logistic_ridge", "val_best.npz")
+    ref_logit = np.load(score)["logit_population"].copy()
+    part = os.path.join(built["blocks"], "blocks_linear_partial.npz")
+    assert not os.path.exists(part)
+    saved, real = [], fit_block_linear.save_npz
+
+    def interrupted(path, **arrays):
+        saved.append(path)
+        if len(saved) == 3:                                   # the third disease's save: the process dies before it
+            raise RuntimeError("interrupted")
+        return real(path, **arrays)
+    monkeypatch.setattr(fit_block_linear, "save_npz", interrupted)
+    with pytest.raises(RuntimeError, match="interrupted"):
+        fit_block_linear.main([built["dir"], "--lam_grid", "10", "1000"])
+    z = np.load(part)
+    assert len(json.loads(str(z["rows"]))) == 2 and stat.S_IMODE(os.stat(part).st_mode) == 0o600
+    monkeypatch.setattr(fit_block_linear, "save_npz", real)
+    table = fit_block_linear.main([built["dir"], "--lam_grid", "10", "1000"])
+    assert list(table.label) == list(ref.label)
+    for col in ("lam", "auroc_val_logistic_ridge", "auroc_val_ridge_prs", "n_iter"):
+        assert np.allclose(table[col].to_numpy(float), ref[col].to_numpy(float)), col
+    assert np.array_equal(np.load(score)["logit_population"], ref_logit)
+    assert not os.path.exists(part)

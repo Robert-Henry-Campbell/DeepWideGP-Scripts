@@ -6,7 +6,8 @@ standardised units) with the 12 standardised covariates unpenalised, fitted on t
 its penalty chosen on the tuning set over a log grid; and an unpenalised logistic regression on the
 cross-fitted ridge PRS at its chosen penalty plus the covariates. Per-person tuning-set scores in the deep
 arm's npz format under <dataset_dir>/scores/blocks_linear/{logistic_ridge,ridge_prs}/val_best.npz
-(owner-only); aggregate AUROCs in results/<rung>/blocks_linear.csv beside this script.
+(owner-only); aggregate AUROCs in results/<rung>/blocks_linear.csv beside this script. Resumable per disease
+(blocks/blocks_linear_partial.npz, removed at the end).
 
     OMP_NUM_THREADS=8 python fit_block_linear.py <dataset_dir> [--lam_grid 1e2 1e3 1e4 1e5 1e6]
 """
@@ -89,7 +90,16 @@ def main(argv=None):
     x = {s: features(rung, s, cov[s], scale) for s in ("train", "val")}
     n_free = len(rung.covariates)
     logit_lr, logit_prs, rows = np.zeros_like(va["y"]), np.zeros_like(va["y"]), []
+    part = os.path.join(rung.blocks, "blocks_linear_partial.npz")
+    if os.path.exists(part):
+        z = np.load(part)
+        if np.array_equal(z["iid"], va["iid"]):
+            logit_lr, logit_prs, rows = z["logit_lr"], z["logit_prs"], json.loads(str(z["rows"]))
+            print(f"resuming after {len(rows)} diseases", flush=True)
+    done = {r["label"] for r in rows}
     for j, lab in enumerate(rung.labels):
+        if lab in done:
+            continue
         w, best = None, None
         for lam in sorted(a.lam_grid, reverse=True):          # the path from the strongest penalty, warm-started
             w, nit = logistic_ridge(x["train"], tr["y"][:, j], lam, n_free, a.max_iter, w)
@@ -108,12 +118,15 @@ def main(argv=None):
                          auroc_val_ridge_prs=auroc(logit_prs[:, j], va["y"][:, j])))
         print(f"{lab}: logistic ridge {best['auroc_val_logistic_ridge']:.4f} (lambda {best['lam']:g}, {best['n_iter']} iterations), "
               f"ridge PRS {rows[-1]['auroc_val_ridge_prs']:.4f}; {time.time() - t0:.0f} s", flush=True)
+        save_npz(part, iid=va["iid"], logit_lr=logit_lr, logit_prs=logit_prs, rows=np.array(json.dumps(rows)))
     write_scores(rung, "logistic_ridge", va["iid"], logit_lr, va["y"])
     write_scores(rung, "ridge_prs", va["iid"], logit_prs, va["y"])
     table = pd.DataFrame(rows)
     res = os.path.join(HERE, "results", os.path.basename(rung.dir))
     os.makedirs(res, exist_ok=True)
     table.to_csv(os.path.join(res, "blocks_linear.csv"), index=False, float_format="%.4f")
+    if os.path.exists(part):
+        os.remove(part)
     print(f"mean tuning AUROC: logistic ridge {table.auroc_val_logistic_ridge.mean():.4f}, ridge PRS "
           f"{table.auroc_val_ridge_prs.mean():.4f}; {int(table.lam_at_grid_edge.sum())} of {len(table)} at a grid edge; "
           f"{time.time() - t0:.0f} s")
