@@ -45,8 +45,10 @@ One row per disease, rung, model family, seed and split. Columns: `disease`, `ru
   a search trial gathered beside its seed-1 retrain, are refused by name; `curves.seed_summary`
   refuses duplicate (disease, rung, family, seed) rows again at fit time, and cells without `n_eff`
   or `h2_50` (a disease missing from the power or S-LDSC tables).
-- **Linear rows** come from `PGI/results/<rung>/tune_metrics.csv`, spline basis, cells `ok` or
-  `not_estimable` (the latter at gain 0, the pipeline's rule); the family is the method name.
+- **Linear rows** come from `PGI/results/<rung>/tune_metrics.csv`, cells `ok` or `not_estimable` (the
+  latter at gain 0, the pipeline's rule); the family is the method name. A table holds the shared
+  protocol's one covariate basis (the 12 covariates entered linearly since 18 November 2026, PGI methods
+  6.1 and 13; before, a spline of year of birth by sex), and a table with two bases is refused.
 - **N_eff** of a disease at a rung is that rung's training cases and controls,
   4 / (1/cases + 1/controls), from `PGI/results/ladder/rung_power.csv` (`neff_train` at M_e 60,000).
   **h²** is the project's own S-LDSC estimate (`PGI/results/hm3plus/sldsc_h2.csv`: `h2_obs50` with
@@ -59,7 +61,7 @@ One row per disease, rung, model family, seed and split. Columns: `disease`, `ru
 - **The deep rows' `delta_auroc` in the gathered table** is `auroc_gain` of the summary file: the
   network's AUROC minus that of the deep arm's own covariates-only model (a logistic regression on
   the 12 standardised covariates fitted on the training split, `score_snapshots.covariates_only`).
-  This is not the shared protocol (PGI methods 6.1: a spline-basis refit on the tuning set). The
+  This is not the shared protocol (PGI methods 6.1: a refit on the tuning set with its covariate basis). The
   table alone therefore gives a quick look with no intervals; the reported numbers come from `fit`
   with the per-person scores, which recomputes every family through the shared protocol.
 
@@ -84,8 +86,10 @@ refitted from the PGI as it is for the other arms; the deep arm's and the block 
 (`iid`, `labels`, `logit_population`, `y`) at their population logit.
 
 **The shared protocol.** For every family, rung and disease, `pgi.combine.Combined` is fitted on
-the tuning set exactly as the PGI pipeline's `tune_eval` stage does (spline basis, 4 df, by sex,
-plus the ten PCs): per seed, and on the seed-mean raw score. A fit that cannot be used (constant
+the tuning set exactly as the PGI pipeline's `tune_eval` stage does, with the protocol's covariate basis
+(`methods.yaml combine.basis`: the 12 covariates entered linearly since 18 November 2026; the spline of year
+of birth by sex plus the PCs that preceded it is now the robustness check, `basis="spline"`): per seed, and
+on the seed-mean raw score. A fit that cannot be used (constant
 score, no convergence, separation) counts as the covariate-only model, the pipeline's not-estimable
 rule. The cells' point values are those of the seed-mean predictions (the design document's rule);
 the per-seed values give the seed range and seed agreement. On the PGI arm's own scores the

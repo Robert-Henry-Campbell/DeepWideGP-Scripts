@@ -172,7 +172,7 @@ def fake_study(tmp_path, people=False):
                 cov = {"I10": 0.66, "E11": 0.70, "K80": 0.62}[label]
                 g = q * (0.01 + 0.004 * np.log2(n_train / 13199))
                 rows.append(dict(fingerprint=FINGERPRINT, dataset=rung, method=method, trait=label, status="ok",
-                                 evaluation="tuning, in-sample", basis="spline", n=20000, n_cases=2000, auroc_pgi=0.55,
+                                 evaluation="tuning, in-sample", basis="linear", n=20000, n_cases=2000, auroc_pgi=0.55,
                                  auroc_combined=cov + g, ce_combined=0.3, auroc_covariates=cov, ce_covariates=0.31,
                                  delta_auroc=g, delta_ce=-0.01, z_pgi=5.0, combined_converged=True, combined_separation=False,
                                  pgi_key="k", detail=""))
@@ -315,3 +315,16 @@ def test_the_per_person_fit_runs_on_the_real_layout_and_the_test_split_is_locked
     assert not np.allclose(rt["cells"].delta_auroc, cells.delta_auroc)               # other people, other values
     F.main(["fit", "--table", args[0], "--out", str(tmp_path / "fit_cli")])
     assert "TABLE ONLY" in capsys.readouterr().out
+
+
+def test_a_tune_metrics_table_with_two_covariate_bases_is_refused(tmp_path):
+    """The shared protocol has one basis (linear since 18 November 2026); a mixed table is a pipeline error, not a filter."""
+    rung = next(iter(F.RUNGS))
+    (tmp_path / rung).mkdir()
+    row = dict(fingerprint="f", dataset=rung, method="c_t", trait="I10", status="ok", basis="linear", n=20000, n_cases=2000,
+               auroc_combined=0.67, auroc_covariates=0.66, delta_auroc=0.01, pgi_key="k")
+    pd.DataFrame([row, dict(row, method="lassosum2")]).to_csv(tmp_path / rung / "tune_metrics.csv", index=False)
+    assert len(F.pgi_rows(str(tmp_path))) == 2
+    pd.DataFrame([row, dict(row, method="lassosum2", basis="spline")]).to_csv(tmp_path / rung / "tune_metrics.csv", index=False)
+    with pytest.raises(ValueError, match="several covariate bases"):
+        F.pgi_rows(str(tmp_path))

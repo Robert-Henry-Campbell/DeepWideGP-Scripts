@@ -2,8 +2,6 @@
 
 *Results of the first training size and the run folders (`runs/ladder`, `runs/classic_deepgp`) were removed on 16 November 2026 at Robert's request, before code changes; the first size's summary is kept in `rung_13199_summary.md`, and the removed files are in git history (DeepWideGP-Scripts 784009f).*
 
-*Superseded, 16 November 2026 (evening): the run described below (the ridge PRS path with the network on top) is no longer the deep arm. Robert decided on an end-to-end model whose first layer is a per-SNP table pooled by LD block, with the ridge path off by default; the ladder will be rerun with it. Design and decisions: `../widedeepgp-blocks/methods.md`. This document stays as the record of the first run.*
-
 *Started 15 November 2026. The model and its search are described in `DeepWideGP/methods.md`.
 The training sizes and the comparison protocol are those of the linear polygenic-index (PGI) arm,
 `PGI/methods.md` sections 2.5, 6 and 8. This document records what is run and how. Results will
@@ -76,9 +74,10 @@ Only the chosen trial and the linear model keep their weights.
 
 As in `PGI/methods.md` section 6.1, for both arms:
 - **Final prediction:** a logistic regression, fitted on the tuning set, of disease status on
-  WideDeepGP's logit for that disease plus the covariate basis. The basis is a natural cubic
-  spline of year of birth with four degrees of freedom, separately by sex, plus ten principal
-  components.
+  WideDeepGP's logit for that disease plus the covariate basis: since 18 November 2026 the 12
+  covariates entered linearly (year of birth, sex, ten principal components; before, a natural
+  cubic spline of year of birth with four degrees of freedom by sex plus the ten principal
+  components, now only a robustness check; `PGI/methods.md` 6.1 and 13).
 - **Reference:** the covariates-only regression.
 - **The test set:** opened once, for both arms together, after every choice at every size is
   recorded.

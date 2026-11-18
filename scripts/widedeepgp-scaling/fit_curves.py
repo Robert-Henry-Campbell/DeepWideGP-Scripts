@@ -101,15 +101,17 @@ def deep_rows(roots):
 
 
 def pgi_rows(results_dir):
-    """The PGI arm's tuning metrics (spline basis; cells ok or not estimable, the latter at gain 0)."""
+    """The PGI arm's tuning metrics (cells ok or not estimable, the latter at gain 0). A table holds the shared
+    protocol's one covariate basis (PGI methods 6.1: the 12 covariates, linear, since 18 November 2026); a table
+    with two bases is refused rather than filtered."""
     rows = []
     for rung, n_train in RUNGS.items():
         path = os.path.join(results_dir, rung, "tune_metrics.csv")
         if not os.path.exists(path):
             continue
         t = pd.read_csv(path, dtype={"fingerprint": str, "pgi_key": str})
-        if "basis" in t:
-            t = t[t.basis == "spline"]
+        if "basis" in t and t.basis.nunique() > 1:
+            raise ValueError(f"{path} holds rows of several covariate bases {sorted(t.basis.unique())}: one protocol per table")
         t = t[t.status.isin(["ok", "not_estimable"]) & np.isfinite(pd.to_numeric(t.delta_auroc, errors="coerce"))]
         for r in t.itertuples():
             rows.append(dict(disease=r.trait, rung=rung, n_train=n_train, family=r.method, seed=1, split="val", status=r.status,

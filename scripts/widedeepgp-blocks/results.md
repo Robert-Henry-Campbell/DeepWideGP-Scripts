@@ -72,8 +72,9 @@ Per disease (tuning set, PRS alone, no covariates):
 
 For context, the PGI arm's tuning-set metrics at this rung (`PGI/results/hm3plus_n13199/tune_metrics.csv`,
 means over the 30 diseases): PGI alone 0.519 to 0.525 AUROC for the four methods finished (C+T 0.5248,
-lassosum2 0.5213, LDpred2-auto 0.5220, SBayesRC 0.5188), covariates alone 0.6671 through the spline
-basis, ΔAUROC 0.0019 to 0.0028. The cross-fitted ridge PRS alone at 0.5207 sits in that range.
+lassosum2 0.5213, LDpred2-auto 0.5220, SBayesRC 0.5188), covariates alone 0.6671 through the spline-by-sex
+basis that was the protocol's until 18 November 2026 (0.6653 through the linear basis that replaced it, PGI
+methods 6.1 and 13), ΔAUROC 0.0019 to 0.0028. The cross-fitted ridge PRS alone at 0.5207 sits in that range.
 
 **Linear comparators** (`fit_block_linear.py`, `results/hm3plus_n13199/blocks_linear.csv`; tuning set, with
 the 12 covariates, linear basis). Mean over the 30 diseases: logistic ridge on the 431 × 90 channels plus
@@ -86,8 +87,8 @@ covariates-only model and the plain PRS, a single fixed combination of the same 
 linear use of them. The first version of the twin, scikit-learn's L2 logistic regression with one penalty on
 every coefficient including the covariates, scored 0.52 to 0.55 on the same inputs (methods section 11).
 Context: the PGI arm's combined models at this rung reach 0.6690 to 0.6700 with a covariates-only reference
-of 0.6671 through its spline basis; the linear covariate basis here gives lower numbers for the same genetic
-content, and the shared protocol's refit puts both arms on the spline basis before any comparison. The
+of 0.6671 through the spline-by-sex basis then in force (0.6653 through the linear basis, the protocol since
+18 November 2026); the shared protocol's refit puts both arms on the same basis before any comparison. The
 fits took 1,620 s for the 30 diseases (five penalties plus the two reference fits each, 8 threads).
 
 **Warm start** (`make_warm_start.py`): `blocks/init_ridge_d16.pt`, 22 tables [L_i, 16] float32 from the
