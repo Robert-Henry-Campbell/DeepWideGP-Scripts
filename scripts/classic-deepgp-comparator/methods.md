@@ -150,9 +150,12 @@ not from dropping controls: every training participant stays in.
   code path.
 - **What is comparable.** The two runs train on the same participants and are read on the same tuning set, so
   their AUROCs compare directly, with the covariate floor and with every other run; what differs is only how
-  often each case enters the loss. Not comparable: the balanced run's cross-entropy, average precision and
-  calibration, which sit on the balanced scale (its logits are about logit(0.5) − logit(0.316) = 0.77 too high
-  at natural prevalence; the protocol's final logistic refit on the tuning set absorbs the shift).
+  often each case enters the loss. Average precision, a rank statistic like AUROC, compares the same way on the
+  same tuning set (corrected 18 November, evening: an earlier version listed it among the non-comparable metrics,
+  a leftover of the undersampling reading, whose evaluation set changed prevalence). Not comparable: the
+  balanced run's cross-entropy and calibration, which sit on the balanced scale (its logits are about
+  logit(0.5) − logit(0.316) = 0.77 too high at natural prevalence; the protocol's final logistic refit on the
+  tuning set absorbs the shift). Result: results.md, "Balanced batches by oversampling cases".
 - **Expectation, stated before the result.** The uniform-batch runs sit at the covariate floor. Balanced
   batches reweight the same information; a run above the floor would say the sampling, not the architecture,
   carries the published result, and a run at the floor that neither does at this size.
