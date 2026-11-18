@@ -63,12 +63,14 @@ PLINK 1 binary file written straight from the store (`export_chr22.py`), with th
 so that the BCF's genotype 1 is the ALT allele whose dosage the store holds, then given the AC, AN
 and AF tags by `bcftools +fill-tags` (phase_common refuses a file without AC and AN); the check is
 that the BCF's allele frequencies equal the hard calls' (passed: largest difference 5e-7).
-**Measured cost** (18 Nov, 10 threads, 235,872 samples, 18,173 sites): setup 14 minutes (the PBWT
-sweep 11.5), then 49 minutes for the first burn-in iteration's HMM pass (265 ± 121 conditioning
-states, 4.4 Mb windows); with 15 MCMC iterations the chromosome takes about 13 hours, 130 CPU-hours,
-15 GB of memory. Scaled by sites, phasing the 1,258,200 SNPs of the store would cost about 9,000
-CPU-hours at this sample size with default settings (about ten days on 40 threads), before any
-lighter MCMC scheme or smaller PBWT depth is tried: a cost the build decision must carry. No accuracy measure exists here
+**Measured cost** (18 Nov, 10 threads, 235,872 samples, 18,173 sites): 6.8 hours in all
+(24,633 s; about 68 CPU-hours; 15 GB of memory): setup 14 minutes (the PBWT sweep 11.5), then 15 MCMC
+iterations whose HMM pass shortened as the haplotypes converged, from 49 minutes in the first burn-in
+iteration (265 ± 121 conditioning states, 4.4 Mb windows) to 13 to 19 minutes in the five main
+iterations (113 ± 59 states). The first iteration alone had suggested 13 hours. Scaled by sites,
+phasing the 1,258,200 SNPs of the store would cost about 4,700 CPU-hours at this sample size with
+default settings (about five days on 40 threads, three weeks on ten), before any lighter MCMC scheme
+or smaller PBWT depth is tried: a cost the build decision must carry. No accuracy measure exists here
 (no trios, no truth haplotypes); for common variants at this sample size the published switch error
 is well under one percent, and the rule below cuts blocks far shorter than a switch interval.
 
@@ -173,5 +175,9 @@ Nothing about blocks that straddle Privé boundaries (none are allowed). One chr
 `export_chr22.py` (hard calls to PLINK 1 binary, the genetic map, an aggregate export record),
 `run_phase_chr22.sh` (plink2 to BCF, index, phase_common, index; detached, logs and exit lines),
 `haploblocks.py` (segments, dictionary, codes, the grid's aggregate tables), `compare_ridge.py`
-(the three ridges, scores, metrics, bootstrap), `test_haploblocks.py` (unit tests, CPU, synthetic
-haplotypes and small ridges). Results: `results/*.csv` (aggregates only) and `results.md`.
+(the three ridges, scores, metrics, bootstrap), `run_analysis_chr22.sh` (waits for the phasing
+chain, then the nine haploblock cells and the three compared cells; detached, resumable by product),
+`make_figure.py` (the figure of section 6 with its data and legend), `test_haploblocks.py` (unit
+tests, CPU, synthetic haplotypes and small ridges, the end-to-end run on the synthetic store).
+Results: `results/*.csv` (aggregates only), `results/figure_chr22_<cell>.{png,pdf,_data.csv,_legend.md}`
+and `results.md`.

@@ -12,6 +12,7 @@ import pytest
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import export_chr22 as ex  # noqa: E402
+import make_figure as mf  # noqa: E402
 
 
 def test_hard_calls_round_within_the_threshold_and_miss_otherwise():
@@ -310,3 +311,15 @@ def test_compare_ridge_runs_end_to_end_on_the_synthetic_store_and_reproduces_the
         assert chosen.loc[lab, "h2_hap"] == pytest.approx(cr.H2[best])
     hap = cr.hap_counts(codes, seg["H"])
     assert (hap.sum(1) == 2 * len(seg["H"])).all()
+    # the figure, from the same tables plus the segments table that haploblocks.main writes
+    pd.DataFrame(dict(block=seg["block"], start_pos=seg["start"], end_pos=seg["end"], n_snps=seg["end"] - seg["start"],
+                      H=seg["H"], coverage=seg["cover"])).to_csv(os.path.join(res, "haploblocks_chr1_f0.01_c0.95_segments.csv"), index=False)
+    mf.main(["--results", res, "--chrom", "1", "--cell", "f0.01_c0.95"])
+    stem = os.path.join(res, "figure_chr1_f0.01_c0.95")
+    assert all(os.path.getsize(stem + ext) > 0 for ext in (".png", ".pdf", "_data.csv", "_legend.md"))
+    fig = pd.read_csv(stem + "_data.csv")
+    plotted = fig[fig["comparison"] != "histogram"]
+    assert len(plotted) == (n_lab + 1) * 2 * 2 and set(plotted["set"]) == {"oof_train", "val"}
+    assert (plotted["lo"] <= plotted["estimate"]).all() and (plotted["estimate"] <= plotted["hi"]).all()
+    assert fig[fig["comparison"] == "histogram"]["estimate"].sum() == len(seg["H"])
+    assert str(len(seg["H"])) in open(stem + "_legend.md").read()
