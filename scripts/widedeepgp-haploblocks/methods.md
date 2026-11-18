@@ -45,8 +45,8 @@ first layer can add.
   that is fitted; the **test split is not read at all**, not even its genotypes, and the related and
   held-out groups are not needed.
 - **Hard calls:** from the store's dosages (0.01 resolution): 0, 1 or 2 when the dosage is within 0.1
-  of it (plink2's default threshold), otherwise missing, which the phasing imputes. The missing rate
-  is reported.
+  of it (plink2's default threshold), otherwise missing, which the phasing imputes. Measured: 0.65% of
+  calls missing, no variant above 5%, one participant above 5% (`haplo/export.json`).
 - **Genetic map:** the PGI arm's OMNI interpolated map for chr22 (`data/pgi/ld/genetic_maps/omni/`,
   494,328 positions, 16.05 to 51.24 Mb, covering the store's 16.50 to 51.22 Mb), rewritten in
   SHAPEIT's three-column format.
@@ -60,8 +60,15 @@ SHAPEIT5 `phase_common` (bioconda 5.1.1, installed
 into `/mnt/sdg/robert/envs/phasing` with bcftools 1.25), population phasing without a reference
 panel, default MCMC and PBWT settings, seed 1, ten threads. The input BCF is made by plink2 from a
 PLINK 1 binary file written straight from the store (`export_chr22.py`), with the ALT allele as A1
-so that the BCF's genotype 1 is the ALT allele whose dosage the store holds; the check is that the
-BCF's allele frequencies equal half the store's chr22 dosage means. No accuracy measure exists here
+so that the BCF's genotype 1 is the ALT allele whose dosage the store holds, then given the AC, AN
+and AF tags by `bcftools +fill-tags` (phase_common refuses a file without AC and AN); the check is
+that the BCF's allele frequencies equal the hard calls' (passed: largest difference 5e-7).
+**Measured cost** (18 Nov, 10 threads, 235,872 samples, 18,173 sites): setup 14 minutes (the PBWT
+sweep 11.5), then 49 minutes for the first burn-in iteration's HMM pass (265 ± 121 conditioning
+states, 4.4 Mb windows); with 15 MCMC iterations the chromosome takes about 13 hours, 130 CPU-hours,
+15 GB of memory. Scaled by sites, phasing the 1,258,200 SNPs of the store would cost about 9,000
+CPU-hours at this sample size with default settings (about ten days on 40 threads), before any
+lighter MCMC scheme or smaller PBWT depth is tried: a cost the build decision must carry. No accuracy measure exists here
 (no trios, no truth haplotypes); for common variants at this sample size the published switch error
 is well under one percent, and the rule below cuts blocks far shorter than a switch interval.
 
@@ -133,6 +140,15 @@ its pseudo-fold model; summed over the 15 blocks: 30 diseases × 5 penalties per
   (tagging and within-block interaction), the ceiling for any gain a haplotype layer could have over
   the SNP table on top of better optimisation.
 - **Sensitivity:** B and C at the cells (1%, 90%) and (1%, 99%) beside the primary cell.
+- **What the test can resolve (measured before the comparison, from the stored cross-fitted SNP
+  ridge restricted to chr22, at the pipeline's chosen penalty).** The chr22 SNP score alone has a mean
+  correlation of 0.0060 with the residualised label on the out-of-fold training rows (0.0072 on the
+  tuning set; positive for 29 and 25 of the 30 diseases) and a mean ΔAUROC of 0.0002, as a 1.4% share
+  of the genome should. The paired comparison therefore resolves relative differences between the
+  parametrisations of the order of 15 to 20% pooled over the diseases (two scores correlated at 0.9 on
+  215,872 rows give a standard error near 0.001 per disease on the correlation difference), and
+  nothing finer: a haplotype gain of a few percent relative, the literature's figure, would read as
+  "indistinguishable from zero" here. The pooled difference is also reported relative to A's mean.
 
 ## 7. Decisions raised here (defaults taken; object if wrong)
 
