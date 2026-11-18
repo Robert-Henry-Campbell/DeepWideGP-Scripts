@@ -122,3 +122,41 @@ network with 30 outputs, trained once at the top rung (215,872 training particip
 - **Cost.** About 23 GB at batch 64 and about 1.1 h per epoch-equivalent (from the measured
   per-SNP memory and time of the published model), so about 3.5 h for a run that stops on patience
   and 33 h at the budget.
+
+## A 1:1 case-control run (Robert, 18 November 2026)
+
+The published DeepGP trained and tested on balanced 1:1 case-control sets per disease; the comparator above
+trains at natural prevalence on the whole rung. One run asks what the published sampling does to the published
+network at the top rung, for I10, against the covariates alone.
+
+- **Training set.** Every I10 case of the top rung's training split (68,309) and as many controls drawn at random
+  without replacement from the other 147,563 (numpy `default_rng`, seed 1): 136,618 participants. Its
+  N_eff = 4 n₁ n₀ / N is 136,618 against 186,775 for the natural split, so the balanced set carries 73% of the
+  natural split's information. Controls are drawn at random, not matched on covariates (Robert's instruction; the
+  paper does not state what its controls were matched on). `make_balanced_split.py` writes the training table into
+  a dataset directory of its own (`data/datasets/ard30/classic_i10_n215872_cc11_I10`, owner-only) that links to the
+  source's store, tuning and test tables, so only the training participants change (`test_balanced_split.py`).
+- **Model and training.** As the quick run `classic_i10_n215872_quick`: the same frozen code
+  (`runs/blocks/code_0094e74`), the same 28,536 SNPs, settings, seed, budget and patience, and the
+  natural-prevalence tuning set for early stopping. SNP and covariate standardisation is on the balanced training
+  rows, as the recipe implies. Launcher `runs/classic_deepgp/run_cc_i10_n215872.sh` (waits for two free GPUs);
+  run `classic_i10_n215872_cc11`.
+- **Reading.** (i) AUROC on the whole tuning set, beside the covariates-only logistic regression fitted on the same
+  balanced training rows and the natural run's on its rows, both through `score_snapshots.py`, so the two floors
+  come from one code path. (ii) AUROC on 200 random 1:1 subsets of the tuning set (`balanced_eval.py`), as the
+  paper scored its hold-out, for both runs.
+- **What is comparable.** AUROC is the probability that a random case scores above a random control. Drawing
+  controls at random changes neither score distribution, so a model's AUROC on a random 1:1 subset of the tuning
+  set has the same expectation as on the whole set, only more spread (fewer controls), and a model trained on a
+  balanced set may be read on the natural tuning set. The whole-tuning-set AUROCs of the balanced and the natural
+  run are therefore directly comparable, and the comparison is recipe against recipe at the same rung: the
+  balanced recipe discards 27% of the information, and that loss is part of what is compared. It is not a test of
+  balancing at fixed information; that would need a natural-prevalence run at N_eff 136,618 (about 158,000
+  participants at the natural mix), not run. Not comparable between the two runs: cross-entropy, average precision
+  and calibration, which depend on prevalence (the balanced model's logits sit about log(147,563 / 68,309) = 0.77
+  too high at natural prevalence; the protocol's final logistic refit on the tuning set absorbs the shift).
+  Matched rather than random controls would break the AUROC comparability as well, because matching on age and
+  sex removes the covariates' discrimination from the set the model is read on.
+- **Expectation, stated before the result.** Both classic runs sit at the covariate floor at this rung; the
+  balanced run, with less information, is expected at the floor as well. A run clearly above the floor would
+  point at the sampling, not the architecture, as the ingredient the natural-prevalence runs lack.
