@@ -123,40 +123,39 @@ network with 30 outputs, trained once at the top rung (215,872 training particip
   per-SNP memory and time of the published model), so about 3.5 h for a run that stops on patience
   and 33 h at the budget.
 
-## A 1:1 case-control run (Robert, 18 November 2026)
+## Balanced batches by oversampling cases (Robert, 18 November 2026)
 
-The published DeepGP trained and tested on balanced 1:1 case-control sets per disease; the comparator above
-trains at natural prevalence on the whole rung. One run asks what the published sampling does to the published
-network at the top rung, for I10, against the covariates alone.
+The published DeepGP trained on balanced case-control sets; the comparator above trains at natural prevalence
+on the whole rung with uniform batches. One run asks what balancing the batches does to the published network
+at the top rung, for I10, against the covariates alone. The balance comes from showing the cases more often,
+not from dropping controls: every training participant stays in.
 
-- **Training set.** Every I10 case of the top rung's training split (68,309) and as many controls drawn at random
-  without replacement from the other 147,563 (numpy `default_rng`, seed 1): 136,618 participants. Its
-  N_eff = 4 n₁ n₀ / N is 136,618 against 186,775 for the natural split, so the balanced set carries 73% of the
-  natural split's information. Controls are drawn at random, not matched on covariates (Robert's instruction; the
-  paper does not state what its controls were matched on). `make_balanced_split.py` writes the training table into
-  a dataset directory of its own (`data/datasets/ard30/classic_i10_n215872_cc11_I10`, owner-only) that links to the
-  source's store, tuning and test tables, so only the training participants change (`test_balanced_split.py`).
-- **Model and training.** As the quick run `classic_i10_n215872_quick`: the same frozen code
-  (`runs/blocks/code_0094e74`), the same 28,536 SNPs, settings, seed, budget and patience, and the
-  natural-prevalence tuning set for early stopping. SNP and covariate standardisation is on the balanced training
-  rows, as the recipe implies. Launcher `runs/classic_deepgp/run_cc_i10_n215872.sh` (waits for two free GPUs);
-  run `classic_i10_n215872_cc11`.
-- **Reading.** (i) AUROC on the whole tuning set, beside the covariates-only logistic regression fitted on the same
-  balanced training rows and the natural run's on its rows, both through `score_snapshots.py`, so the two floors
-  come from one code path. (ii) AUROC on 200 random 1:1 subsets of the tuning set (`balanced_eval.py`), as the
-  paper scored its hold-out, for both runs.
-- **What is comparable.** AUROC is the probability that a random case scores above a random control. Drawing
-  controls at random changes neither score distribution, so a model's AUROC on a random 1:1 subset of the tuning
-  set has the same expectation as on the whole set, only more spread (fewer controls), and a model trained on a
-  balanced set may be read on the natural tuning set. The whole-tuning-set AUROCs of the balanced and the natural
-  run are therefore directly comparable, and the comparison is recipe against recipe at the same rung: the
-  balanced recipe discards 27% of the information, and that loss is part of what is compared. It is not a test of
-  balancing at fixed information; that would need a natural-prevalence run at N_eff 136,618 (about 158,000
-  participants at the natural mix), not run. Not comparable between the two runs: cross-entropy, average precision
-  and calibration, which depend on prevalence (the balanced model's logits sit about log(147,563 / 68,309) = 0.77
-  too high at natural prevalence; the protocol's final logistic refit on the tuning set absorbs the shift).
-  Matched rather than random controls would break the AUROC comparability as well, because matching on age and
-  sex removes the covariates' discrimination from the set the model is read on.
-- **Expectation, stated before the result.** Both classic runs sit at the covariate floor at this rung; the
-  balanced run, with less information, is expected at the floor as well. A run clearly above the floor would
-  point at the sampling, not the architecture, as the ingredient the natural-prevalence runs lack.
+- **Batches.** The rotation sampler with the one label (`--sampler rotation --labels I10`; DeepWideGP
+  `widedeepgp/samplers.py`, methods 5.1): every batch of 64 holds 32 I10 cases and 32 non-cases. The non-cases
+  come in shuffled passes without replacement, so each of the 147,563 is seen once per pass of 4,611 batches;
+  the 68,309 cases come in passes of their own, 2,135 batches long, so each case is seen 2.16 times per pass over
+  the non-cases. Every batch is a function of the seed and the batch number, as in every run.
+- **Loss.** Plain cross-entropy on the batch as drawn: no class weight (`--gamma 0`) and no sampling-rate
+  correction (`--no_sampling_correction`). The correction (`losses.py`, DeepWideGP methods 5.2) divides each
+  person's term by their sampling rate, 1.58 for a case and 0.73 for a non-case here, which weights the cases
+  back to the population and would undo the balance; without it the loss is the mean cross-entropy of a 1:1
+  batch, the paper's objective. The model's logits are then on the balanced scale (an intercept near 0 for a
+  50% batch), not the population's.
+- **Everything else as the quick run** `classic_i10_n215872_quick`: the same dataset (`classic_i10_n215872`,
+  all 215,872 training participants, 28,536 SNPs), frozen code (`runs/blocks/code_0094e74`), settings, seed,
+  budget in draws (30 epoch-equivalents of 215,872 draws), validation every 53,952 draws, patience 8. Launcher
+  `runs/classic_deepgp/run_balanced_i10_n215872.sh` (waits for two free GPUs); run
+  `classic_i10_n215872_balanced`. Both runs are then scored on the tuning set by `score_snapshots.py`, which
+  fits the covariates-only logistic regression on the training split beside each, so the floor comes from one
+  code path.
+- **What is comparable.** The two runs train on the same participants and are read on the same tuning set, so
+  their AUROCs compare directly, with the covariate floor and with every other run; what differs is only how
+  often each case enters the loss. Not comparable: the balanced run's cross-entropy, average precision and
+  calibration, which sit on the balanced scale (its logits are about logit(0.5) − logit(0.316) = 0.77 too high
+  at natural prevalence; the protocol's final logistic refit on the tuning set absorbs the shift).
+- **Expectation, stated before the result.** The uniform-batch runs sit at the covariate floor. Balanced
+  batches reweight the same information; a run above the floor would say the sampling, not the architecture,
+  carries the published result, and a run at the floor that neither does at this size.
+- **Record.** The request was first read as undersampling the controls to the case count (a 1:1 training set
+  of 136,618 participants). That dataset and the scripts that made and read it were built, committed and
+  withdrawn before any training (Robert's clarification, 18 November, evening); nothing of it remains.
