@@ -7,9 +7,10 @@ DeepWideGP's `widening` branch:
     lin        the comparators per rung in two phases. On a GPU, reserved for the build and released when the phase
                ends: the folds, the closed-form block ridge and the ridge warm start, the top rung on one GPU and
                the other rungs in turn on a second. On the CPU, beside the training: the ridge check and the
-               linear twins. T0 and a rung's grid wait for that rung's warm start only; the no-initialisation
-               ablation runs meanwhile; a step whose product exists is skipped (18 November 2026)
-    t0         the pre-test: S1, S3, S5 once each at the top rung, fixed settings, from the ridge warm start
+               linear twins. T0 and a rung's grid wait for that rung's warm start only; a step whose product
+               exists is skipped (18 November 2026)
+    t0         the pre-test: S1, S3, S5 once each at the top rung, fixed settings, from the ridge warm start, each
+               on a GPU of its own as one frees; the first thing after the warm start
     grid       5 sizes x 2 mixers per rung, rung by rung from 215,872 down to 13,199 participants, on the Prive
                partition, dosage code, from the ridge warm start
     side       at the top rung: the partition sweep (ldsplit2000, ldsplit5000), the ablations (no initialisation,
@@ -102,9 +103,10 @@ def results(run):
     return json.load(open(path)) if os.path.exists(path) else None
 
 
-def free_gpus(limit=MAX_GPUS):
+def free_gpus(limit=MAX_GPUS, exclusive=False):
     """Up to ``limit`` GPUs without another session's compute process and not reserved for a comparator build,
-    the least used by this chain first; waits (five-minute polls) until there is one."""
+    the least used by this chain first (``exclusive``: none of this chain's processes either); waits
+    (five-minute polls) until there is one."""
     while True:
         for gpu, proc in list(RESERVED.items()):
             if proc.poll() is not None:
@@ -131,7 +133,7 @@ def free_gpus(limit=MAX_GPUS):
             else:
                 foreign.add(uuid)
         free = [(ours.get(uuid.strip(), 0), idx.strip()) for idx, uuid in (r.split(",") for r in rows)
-                if uuid.strip() not in foreign and idx.strip() not in RESERVED]
+                if uuid.strip() not in foreign and idx.strip() not in RESERVED and not (exclusive and ours.get(uuid.strip()))]
         if free:
             return [idx for _, idx in sorted(free)][:limit]
         log("waiting for a GPU without another session's process")
@@ -311,37 +313,40 @@ def main():
     down = RUNGS[::-1]                                       # the top rung first
     # the comparators' GPU phases (folds, block ridge, warm start): the top rung on one GPU, the other rungs in turn
     # on a second, each reserved for its build and released when the phase ends; the CPU phases (the ridge check,
-    # the linear twins) beside the training; the no-initialisation ablation at the top rung runs on the rest
+    # the linear twins) beside the training
     gpus = free_gpus()
     lin_top = spawn([PY, __file__, "lin", "gpu", "one", TOP], f"lin_{TOP}_gpu", gpus[0])
     lin_rest = spawn([PY, __file__, "lin", "gpu", "rest"], "lin_rest_gpu", gpus[-1])
     RESERVED.update({gpus[0]: lin_top, gpus[-1]: lin_rest})   # a build fills its GPU (eigh of a 15,000-SNP block)
     twins = [spawn([PY, __file__, "lin", "cpu", "one", TOP], f"lin_{TOP}_cpu", ""),
              spawn([PY, __file__, "lin", "cpu", "rest"], "lin_rest_cpu", "")]
-    abl_none = [(cell_name(m, "S3", "prive431", "dosage", "none", TOP), flags(m, "S3", "prive431", "dosage", "none", TOP), None)
-                for m in MIXERS]
-    run_cells(abl_none, seeds)
     if lin_top.wait():
         raise RuntimeError(f"the block ridge or the warm start of {TOP} failed; see logs/lin_{TOP}_gpu.log")
     log(f"lin {TOP}: warm start ready")
     top_init = init_file(INIT, TOP, "prive431", 16, "dosage", free_gpus()[0])
 
-    # t0: three single runs at the top rung from the warm start, the slowest first, in waves over the free GPUs
-    todo = [z for z in ("S5", "S3", "S1") if results(f"{OUT}/t0_transformer_{z}_prive431_{TOP}") is None]
-    while todo:
-        gpus = free_gpus()
-        wave, todo = todo[:len(gpus)], todo[len(gpus):]
-        procs = []
-        for size, gpu in zip(wave, gpus):
-            name = f"t0_transformer_{size}_prive431_{TOP}"
-            cmd = [PY, "main_multilabel.py", *flags("transformer", size, "prive431", "dosage", INIT, TOP), "--exp_name", name,
-                   "--seed", "1", "--tune_trials", "0", *[a for k, v in DEFAULTS.items() for a in (f"--{k}", str(v))],
-                   "--init_encoder", top_init]
-            procs.append((name, spawn(cmd, f"cell_{name}", gpu, cwd=CODE)))
-        for name, proc in procs:
-            if proc.wait() or results(f"{OUT}/{name}") is None:
-                raise RuntimeError(f"{name} failed")
-            log(f"t0 {name}: tuning AUROC {results(f'{OUT}/{name}')['best_val_auroc_mean']:.4f}")
+    # t0: three single runs at the top rung from the warm start, the slowest first, each on a GPU of its own as one frees
+    procs, running = [], {}
+    for size in ("S5", "S3", "S1"):
+        name = f"t0_transformer_{size}_prive431_{TOP}"
+        if results(f"{OUT}/{name}") is not None:
+            continue
+        while True:
+            running = {g: p for g, p in running.items() if p.poll() is None}
+            gpus = [g for g in free_gpus(exclusive=True) if g not in running]      # not one this loop just filled
+            if gpus:
+                break
+            time.sleep(300)
+        cmd = [PY, "main_multilabel.py", *flags("transformer", size, "prive431", "dosage", INIT, TOP), "--exp_name", name,
+               "--seed", "1", "--tune_trials", "0", *[a for k, v in DEFAULTS.items() for a in (f"--{k}", str(v))],
+               "--init_encoder", top_init]
+        log(f"t0 {name}: starting on GPU {gpus[0]}")
+        running[gpus[0]] = spawn(cmd, f"cell_{name}", gpus[0], cwd=CODE)
+        procs.append((name, running[gpus[0]]))
+    for name, proc in procs:
+        if proc.wait() or results(f"{OUT}/{name}") is None:
+            raise RuntimeError(f"{name} failed")
+        log(f"t0 {name}: tuning AUROC {results(f'{OUT}/{name}')['best_val_auroc_mean']:.4f}")
 
     # grid: rung by rung from the top, five sizes x two mixers, the plain configuration on the Prive partition
     for r in down:                                           # a rung's cells wait for its warm start
@@ -356,15 +361,15 @@ def main():
     if lin_rest.wait():
         raise RuntimeError("the other rungs' block ridge or warm start failed; see logs/lin_rest_gpu.log")
 
-    # side studies at the top rung: partition sweep, ablations (the warm start needs the top rung's ridge), table width, shapes
     # side studies at the top rung: the partition sweep (the warm-start table is per SNP, so the same file serves every
-    # partition), the remaining ablations, the table width, the shapes
+    # partition), the ablations (no initialisation, which ran first while the warm start was a day away, now here), the
+    # table width, the shapes
     side = [(cell_name(m, "S3", p, "dosage", INIT, TOP), flags(m, "S3", p, "dosage", INIT, TOP), top_init)
             for p in PARTITIONS if p != "prive431" for m in MIXERS]
     run_cells(side, seeds)
     abl = [(cell_name(m, "S3", "prive431", code, init, TOP), flags(m, "S3", "prive431", code, init, TOP),
             init_file(init, TOP, "prive431", 16, code, free_gpus()[0]))
-           for code, init in (("genotype", "none"), ("dosage", "pre")) for m in MIXERS]
+           for code, init in (("dosage", "none"), ("genotype", "none"), ("dosage", "pre")) for m in MIXERS]
     abl.append((cell_name("transformer", "S3", "prive431", "dosage", INIT, TOP) + "_rotation",      # the old objective
                 flags("transformer", "S3", "prive431", "dosage", INIT, TOP, objective=ROTATION), top_init))
     run_cells(abl, seeds)

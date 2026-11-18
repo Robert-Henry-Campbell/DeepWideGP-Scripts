@@ -857,8 +857,13 @@ simplification, are:
    disease (`blocks/blocks_linear_partial.npz`, removed when its table is written). The chain was relaunched
    with these changes in the night of 17 to 18 November (`chain.log`); the two twin fits then running
    restarted (the block ridges and the ridge checks were kept), and the no-initialisation ablation search
-   resumed its finished trials. The fitted models and the comparators do not change: the same steps run, in
-   another order.
+   resumed its finished trials. At that relaunch the chain still ran the two no-initialisation ablation searches
+   before T0, an order chosen when the warm start was a day away; a second relaunch minutes later put T0 first,
+   each of its three runs on a GPU of its own as one frees (`free_gpus(exclusive=True)`), and moved the
+   no-initialisation cells to the side studies beside the other ablations. The transformer no-initialisation
+   cell's first trial had reached 8 epoch-equivalents at the covariate floor (mean tuning AUROC 0.6628 against
+   0.6627 for the covariates alone) and resumes there from its checkpoint. The fitted models and the comparators
+   do not change: the same steps run, in another order.
 
 ## References
 
