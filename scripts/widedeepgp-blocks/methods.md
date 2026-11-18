@@ -893,6 +893,32 @@ simplification, are:
    table at all? the twin is the yardstick) and the table trained at κ 1e-3 without decay (does end-to-end training
    add to it?). The unscaled warm starts and the three T0 runs are kept beside the new ones as `_unscaled` records.
 
+15. **The warm start leaks the training labels; the first layer becomes fold-routed (18 November 2026).** The two
+   diagnostics of item 14 (S3, the in-sample ridge table rescaled to unit-RMS tokens) read the table at once: mean
+   tuning AUROC 0.660 and I10 0.704 at the first validation (0.25 epoch-equivalents), above the floor and above
+   anything T0 reached. From then on both fell, the frozen table as fast as the trained one: 0.650, 0.623, 0.623,
+   0.626 at 0.5, 0.75, 1.0 and 1.25 epoch-equivalents (I10 0.689, 0.644, 0.656, 0.657), levelling at 0.62 to 0.63
+   (stopped by hand at 2.0 and 3.25). The cause, measured: the full-training ridge PRS at the chosen penalty has
+   in-sample AUROC 0.957 on average over the 30 diseases (I10 0.849, I50 0.999) on 4,096 training participants and
+   0.568 on 4,096 tuning participants (the cross-fitted PRS 0.568 and 0.564 on the same rows). A training
+   participant's tokens therefore carry their own labels, and the network learns to read them off, a shortcut worth
+   nothing out of sample. The remark of item 5, that a frozen in-sample first layer is leaky, holds for the
+   trainable one as well. Robert's decision: the first layer is **fold-routed**. The table has one copy per fold of
+   the block ridge (five); a training participant is pooled with the copy fitted without them (`blocks/folds.npz`,
+   `fold_train`), and every other participant with the copy of their pseudo-fold (a seeded hash of the IID modulo
+   five, the comparators' rule), so no participant's tokens were fitted on their label. The copies are the fold
+   ridges' weights [M, 90] in the d_e-dimensional basis of the full ridge's right singular vectors (so that the five
+   copies share one coordinate system for the network; the basis is 90 × 16 aggregate numbers), scaled by one
+   factor so that the cross-fitted tokens have unit RMS over a sample of training participants (10,200 at the top
+   rung). Frozen, this first layer is the stacking ablation of item 5; trained, each copy learns end to end from its
+   own fifth of the rows on top of a ridge from the other four fifths. Code: DeepWideGP `--folds` (the data module
+   reads each participant's fold; `BlockEncoder(n_folds)` pools by copy; the init file's fold count is checked;
+   `n_folds` in the run's settings), `make_warm_start.py` (fold copies by default, `--in_sample` for the record),
+   the chain's `flags()` (`--folds` for every warm-started cell). Quick test, 12:03Z, S3, ten epoch-equivalents,
+   from `runs/blocks/code_11c24e3`: `runs/blocks_diag/diag_S3_folds_frozen` (copies fixed) and `diag_S3_folds_warm`
+   (κ 10⁻³, no decay). The in-sample files are kept as `init_ridge_d16_insample.pt` (scaled) and
+   `init_ridge_d16_unscaled.pt`; T0 and the item-14 diagnostics stand as records of the in-sample warm start.
+
 ## References
 
 Kaplan J, McCandlish S, Henighan T, et al. Scaling laws for neural language models. arXiv

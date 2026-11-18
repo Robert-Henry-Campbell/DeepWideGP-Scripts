@@ -22,6 +22,8 @@ def test_every_cell_s_flags_carry_the_objective_and_the_recipe_explicitly():
             pairs["--lr_schedule"], pairs["--stop_patience"], pairs["--stop_burnin"]) == \
         ("1e-4", "1e-3", "0.5", "64", "0.4", "plateau", "16", "2000")                      # Sigurdsson et al. 2023
     assert f[-4:] == c.OBJECTIVE == ["--sampler", "shuffled", "--gamma", "0"] and f.count("--sampler") == 1
+    assert pairs["--folds"] == f"{c.DATA}/ard30/{c.TOP}/blocks/folds.npz"                    # fold-routed warm start
+    assert "--folds" not in c.flags("transformer", "S3", "prive431", "dosage", "none", c.TOP)  # from zero: one copy
     rot = c.flags("transformer", "S3", "prive431", "dosage", "ridge", c.TOP, objective=c.ROTATION)   # the ablation cell
     p = dict(zip(rot[::2], rot[1::2]))
     assert (p["--sampler"], p["--gamma"], p["--lr"], p["--run_dir"]) == ("rotation", "0.5", "1e-4", c.RUNS)

@@ -237,11 +237,12 @@ def flags(mixer, size, partition, code, init, rung, embed_dim=16, shape=None, ob
          "--val_min_participants", "20000", "--val_max_epoch_equiv", "1", "--min_participants", "128000",
          "--stop_patience", "16", "--stop_burnin", "2000", "--tune_min_validations", "8", "--lr_schedule", "plateau",
          "--warmup_steps", "0", "--snapshots_per_decade", "6",
-         "--snapshots_max", "20" if size == "S3" or rung == TOP else "6", "--run_dir", RUNS, "--experiment", "blocks",
-         *objective]
+         "--snapshots_max", "20" if size == "S3" or rung == TOP else "6", "--run_dir", RUNS, "--experiment", "blocks"]
     if size == "S5" and n_blocks >= 5000:
         f.append("--grad_ckpt")
-    return f
+    if init == "ridge":                                      # fold-routed copies of the warm start (18 November 2026)
+        f += ["--folds", f"{dataset(rung)}/blocks/folds.npz"]
+    return f + list(objective)                               # the objective last: the tests pin it there
 
 
 def search(name, base_flags, init_path, trials=SEARCH[1]):

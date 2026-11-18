@@ -348,7 +348,7 @@ def test_a_partition_for_other_variants_or_without_contiguous_blocks_is_refused(
 
 
 def test_make_warm_start_is_the_truncated_svd_of_the_full_weights(built):
-    out = make_warm_start.main([built["dir"], "--embed_dim", "4", "--token_rms", "0"])
+    out = make_warm_start.main([built["dir"], "--embed_dim", "4", "--token_rms", "0", "--in_sample"])
     saved = torch.load(out)
     man, state = saved["manifest"], saved["state"]
     seq_len = [built["store"].n_variants(c) for c in built["store"].chroms]
@@ -362,7 +362,8 @@ def test_make_warm_start_is_the_truncated_svd_of_the_full_weights(built):
     assert np.allclose(t.T @ t, np.diag(s[:4] ** 2), rtol=1e-4, atol=1e-6 * s[0] ** 2)      # orthogonal columns of length s_k
     assert np.allclose(np.abs(t), np.abs(u[:, :4] * s[:4]), rtol=1e-4, atol=1e-6 * s[0])
     assert man["source"]["variance_kept"] == pytest.approx(float((s[:4] ** 2).sum() / (s ** 2).sum()))
-    assert man["source"]["weights_sha256"] == rc.sha256_file(os.path.join(built["blocks"], "ridge_weights_full.npy"))
+    assert man["source"]["weights_sha256"] == [rc.sha256_file(os.path.join(built["blocks"], "ridge_weights_full.npy"))]
+    assert man["n_folds"] == 1 and man["source"]["weights"] == ["ridge_weights_full.npy"]
     assert (man["partition_digest"] is None and "TODO" in man["source"]) or len(man["partition_digest"]) == 16
     assert stat.S_IMODE(os.stat(out).st_mode) == 0o600
     with pytest.raises(SystemExit, match="--embed_dim"):
@@ -458,8 +459,8 @@ def test_fit_block_linear_resumes_per_disease(built, monkeypatch):
 def test_make_warm_start_scales_the_block_tokens_to_unit_rms(built):
     """The default scaling: the tokens the model forms from the table (standardised dosages times the rows, summed over a
     block, divided by sqrt(SNPs)) have RMS 1 over the training participants; the manifest records the factor."""
-    raw = torch.load(make_warm_start.main([built["dir"], "--embed_dim", "4", "--token_rms", "0", "--out", os.path.join(built["blocks"], "raw_d4.pt")]))
-    out = make_warm_start.main([built["dir"], "--embed_dim", "4", "--scale_rows", "100000"])      # every training row
+    raw = torch.load(make_warm_start.main([built["dir"], "--embed_dim", "4", "--token_rms", "0", "--in_sample", "--out", os.path.join(built["blocks"], "raw_d4.pt")]))
+    out = make_warm_start.main([built["dir"], "--embed_dim", "4", "--scale_rows", "100000", "--in_sample"])      # every training row
     saved = torch.load(out)
     src, state = saved["manifest"]["source"], saved["state"]
     rung = rc.Rung(built["dir"])
@@ -480,3 +481,39 @@ def test_make_warm_start_scales_the_block_tokens_to_unit_rms(built):
             n += v.size
     assert np.sqrt(s2 / n) == pytest.approx(1.0, rel=1e-4)
     assert src["scale"] > 1                                                         # ridge weights are small in standardised units
+
+
+def test_make_warm_start_fold_copies_are_the_fold_ridges_in_the_full_ridges_basis(built):
+    """The default: one table copy per fold, W_fold_k V (V the full ridge's right singular vectors), one scale for all,
+    the cross-fitted tokens (each training row through its own fold's copy) at unit RMS; the manifest says so."""
+    out = make_warm_start.main([built["dir"], "--embed_dim", "4", "--scale_rows", "100000"])
+    saved = torch.load(out)
+    man, state, src = saved["manifest"], saved["state"], saved["manifest"]["source"]
+    rung = rc.Rung(built["dir"])
+    tr = rung.table("train")
+    fold = rung.folds("train", tr["iid"]).astype(np.int64)
+    assert man["n_folds"] == rc.K_FOLDS == 5 and "pseudo-fold" in man["fold_rule"]
+    assert src["weights"] == [f"ridge_weights_fold{k}.npy" for k in range(5)] and len(src["weights_sha256"]) == 5
+    w = np.load(os.path.join(built["blocks"], "ridge_weights_full.npy"))
+    _, s, vt = np.linalg.svd(w, full_matrices=False)
+    basis = vt[:4].T
+    seq_len = [rung.store.n_variants(c) for c in rung.store.chroms]
+    for k in range(5):
+        wk = np.load(os.path.join(built["blocks"], f"ridge_weights_fold{k}.npy")) @ basis * src["scale"]
+        got = np.concatenate([state[f"tables.{i}"][k].numpy() for i in range(22)])
+        assert all(state[f"tables.{i}"].shape == (5, seq_len[i], 4) for i in range(22))
+        np.testing.assert_allclose(got, wk, rtol=1e-4, atol=1e-6 * np.abs(wk).max())
+    _, mean, std = rung.snp_stats(tr["rows"])
+    part = rc.load_partition(built["part"], rung.store)
+    s2 = n = 0.0
+    for i, c in enumerate(rung.store.chroms):                                       # independent recomputation, routed by fold
+        x = rc.standardise(rung.store.read_q(c, tr["rows"]), torch.as_tensor(mean[i], dtype=torch.float32),
+                           torch.as_tensor(rc.inverse_sd(std[i]), dtype=torch.float32)).numpy()
+        t = state[f"tables.{i}"].numpy()
+        for _, a, b in part["blocks"][c]:
+            v = np.einsum("nj,njd->nd", x[:, a:b], t[fold][:, a:b, :]) / np.sqrt(b - a)
+            s2 += float((v ** 2).sum())
+            n += v.size
+    assert np.sqrt(s2 / n) == pytest.approx(1.0, rel=1e-4) and src["scale_rows"] == len(tr["rows"])
+    cf = np.load(os.path.join(built["blocks"], "prs_train.npz"))                      # the copies carry no row's own label:
+    assert np.array_equal(cf["fold"], fold)                                          # the folds are the cross-fitted PRS's
