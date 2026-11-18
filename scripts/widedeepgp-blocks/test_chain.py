@@ -31,6 +31,7 @@ def test_every_cell_s_flags_carry_the_objective_and_the_recipe_explicitly():
 def test_the_sizes_and_the_launcher():
     c = _chain()
     assert [c.SIZES[s][0] for s in ("S1", "S2", "S3", "S4", "S5")] == [16, 32, 64, 128, 256]
+    assert c.DEFAULTS == {"table_kappa": 1e-3, "table_decay": 0.0} and c.INIT == "ridge"     # a warm start kept, not erased
     assert subprocess.run(["bash", "-n", str(HERE / "chains" / "run_all.sh")]).returncode == 0
 
 

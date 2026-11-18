@@ -869,6 +869,30 @@ simplification, are:
    retrains) pass `--resume` when a stopped attempt left a checkpoint. The fitted models and the comparators do
    not change: the same steps run, in another order.
 
+14. **T0 at the covariate floor, and why: the warm start never reached the network (18 November 2026).** The three
+   warm-started pre-test runs ended at mean tuning AUROC 0.6629 (S5, 7.8 epoch-equivalents), 0.6633 (S3, 15.5) and
+   0.6631 (S1, 8.5) against 0.6627 for the covariates alone, while the linear twins on the same block information
+   reached 0.6732 (logistic ridge on the channels) and 0.6777 (ridge PRS plus covariates), ahead of the best deep run
+   for every disease (median 0.011, up to 0.057 for E66). Two faults, both in how the ridge warm start meets the
+   network. (i) Scale: the ridge weights are of order 1e-5 in standardised-dosage units (table entry RMS 3.6e-5), so a
+   block token formed from them has RMS 1.0e-4, four orders of magnitude below the block and chromosome identity
+   embeddings (N(0, 1)) it is added to; the block MLP cannot read it. (ii) Erasure: the table's learning rate,
+   κ √B / √M = 2.1e-4 at κ 0.03, is six times the entry RMS, so Adam's near-sign steps overwrite any entry with a
+   gradient within a few steps, and AdamW decay 1.0 shrinks the whole table by e every 4,674 steps (1.4
+   epoch-equivalents); S3's final table has cosine −0.0007 with its warm start. Every warm-started run was therefore a
+   from-scratch run, and from scratch sits at the floor (the no-initialisation S3: 0.6628 after 8 epoch-equivalents).
+   The grid's six-trial search (κ 0.01 to 0.03, decay 0.3 to 3) could not keep a warm start either, so Robert paused
+   the grid after its first cell had started (the lower rungs' comparator builds and the twin fits ran on). The fix:
+   `make_warm_start.py` scales the table so that the block tokens have unit RMS over a sample of 2,048 training
+   participants (`--token_rms 1`; the factor is recorded in the manifest: 9,924 at the top rung, where the unscaled
+   token RMS was 1.01e-4); `tune_optuna.py` gives a warm-started table its own search range, κ 3e-4 to 1e-2 and decay
+   1e-3 to 3e-2 (log-uniform), the from-scratch range staying 0.01 to 0.03 and 0.3 to 3; the chain's single-run
+   defaults become κ 1e-3 and decay 0 (the table lr 7e-6 per step against entries of order 1 after scaling). Two
+   diagnostics at S3 from the rescaled top-rung warm start, ten epoch-equivalents each, run before the grid is
+   relaunched (`runs/blocks_diag/`, 11:15Z): the table frozen (`--freeze_encoder`: does the network read a ridge
+   table at all? the twin is the yardstick) and the table trained at κ 1e-3 without decay (does end-to-end training
+   add to it?). The unscaled warm starts and the three T0 runs are kept beside the new ones as `_unscaled` records.
+
 ## References
 
 Kaplan J, McCandlish S, Henighan T, et al. Scaling laws for neural language models. arXiv

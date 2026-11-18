@@ -26,7 +26,9 @@ share one); ten CPU threads per GPU. The recipe (Robert, 17 November, night; des
 the ridge warm start as every cell's starting point (so each rung's linear comparators are built first), the
 settings of Sigurdsson et al. 2023 fixed (learning rate 1e-4, weight decay 1e-3, dropout 0.5, batch 64, 40% input
 masking, plateau schedule, early stopping after 16 passes once 2,000 steps are done), the table's own Adam group
-(epsilon 2.5e-7, decay) and a search over the table's pace and decay only (SEARCH). The objective (Robert, 18 November
+(epsilon 2.5e-7, decay) and a search over the table's pace and decay only (SEARCH; tune_optuna.py gives a warm-started
+table its own, slower and undecayed, range). The warm start is scaled to unit-RMS block tokens (make_warm_start.py,
+18 November 2026: T0 from the raw ridge scale ended at the covariate floor, its table erased). The objective (Robert, 18 November
 2026; design document section 12, item 12): plain cross-entropy at natural prevalence, uniform shuffled batches and no
 class weight (OBJECTIVE); the rotation of disease-balanced batches with the square-root class weight, the objective of
 every run before, is one paired ablation cell at the top rung (ROTATION). Nothing with simulated phenotypes is queued. A finished cell
@@ -61,7 +63,8 @@ SIZES = {"S1": (16, {"transformer": 1, "bimamba1": 1}), "S2": (32, {"transformer
          "S3": (64, {"transformer": 4, "bimamba1": 6}), "S4": (128, {"transformer": 6, "bimamba1": 9}),
          "S5": (256, {"transformer": 8, "bimamba1": 14})}
 SHAPES = {"S3w": (32, {"transformer": 16, "bimamba1": 20}), "S3d": (128, {"transformer": 1, "bimamba1": 2})}
-DEFAULTS = {"table_kappa": 0.03, "table_decay": 1.0}   # single runs (T0); the search tunes these two (SEARCH)
+DEFAULTS = {"table_kappa": 1e-3, "table_decay": 0.0}   # single warm-started runs (T0): steps small against the loaded
+                                                          # entries, no decay (18 Nov 2026); the search tunes these two (SEARCH)
 SEARCH = ("table", 6)                                     # --tune_space and trials per cell; ("run", 12) tunes the network's too
 INIT = "ridge"                                            # the grid's starting point; "none" is the ablation
 OBJECTIVE = ["--sampler", "shuffled", "--gamma", "0"]     # plain cross-entropy at natural prevalence (18 November 2026)

@@ -348,7 +348,7 @@ def test_a_partition_for_other_variants_or_without_contiguous_blocks_is_refused(
 
 
 def test_make_warm_start_is_the_truncated_svd_of_the_full_weights(built):
-    out = make_warm_start.main([built["dir"], "--embed_dim", "4"])
+    out = make_warm_start.main([built["dir"], "--embed_dim", "4", "--token_rms", "0"])
     saved = torch.load(out)
     man, state = saved["manifest"], saved["state"]
     seq_len = [built["store"].n_variants(c) for c in built["store"].chroms]
@@ -453,3 +453,30 @@ def test_fit_block_linear_resumes_per_disease(built, monkeypatch):
         assert np.allclose(table[col].to_numpy(float), ref[col].to_numpy(float)), col
     assert np.array_equal(np.load(score)["logit_population"], ref_logit)
     assert not os.path.exists(part)
+
+
+def test_make_warm_start_scales_the_block_tokens_to_unit_rms(built):
+    """The default scaling: the tokens the model forms from the table (standardised dosages times the rows, summed over a
+    block, divided by sqrt(SNPs)) have RMS 1 over the training participants; the manifest records the factor."""
+    raw = torch.load(make_warm_start.main([built["dir"], "--embed_dim", "4", "--token_rms", "0", "--out", os.path.join(built["blocks"], "raw_d4.pt")]))
+    out = make_warm_start.main([built["dir"], "--embed_dim", "4", "--scale_rows", "100000"])      # every training row
+    saved = torch.load(out)
+    src, state = saved["manifest"]["source"], saved["state"]
+    rung = rc.Rung(built["dir"])
+    tr = rung.table("train")
+    assert src["token_rms"] == 1.0 and src["scale_rows"] == len(tr["rows"]) and src["scale"] == pytest.approx(1.0 / src["token_rms_unscaled"])
+    for k in state:
+        assert np.allclose(state[k].numpy(), raw["state"][k].numpy() * np.float32(src["scale"]), rtol=1e-5, atol=1e-7)
+    _, mean, std = rung.snp_stats(tr["rows"])
+    part = rc.load_partition(built["part"], rung.store)
+    s2 = n = 0.0
+    for i, c in enumerate(rung.store.chroms):                                       # independent recomputation
+        x = rc.standardise(rung.store.read_q(c, tr["rows"]), torch.as_tensor(mean[i], dtype=torch.float32),
+                           torch.as_tensor(rc.inverse_sd(std[i]), dtype=torch.float32)).numpy()
+        t = state[f"tables.{i}"].numpy()
+        for _, s, e in part["blocks"][c]:
+            v = x[:, s:e] @ t[s:e] / np.sqrt(e - s)
+            s2 += float((v ** 2).sum())
+            n += v.size
+    assert np.sqrt(s2 / n) == pytest.approx(1.0, rel=1e-4)
+    assert src["scale"] > 1                                                         # ridge weights are small in standardised units
