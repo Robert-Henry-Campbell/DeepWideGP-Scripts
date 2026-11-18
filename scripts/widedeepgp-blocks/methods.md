@@ -958,6 +958,33 @@ simplification, are:
    trained with `mean`, κ 10⁻² and epsilon 10⁻⁸, so that the table can move. The two throttled trained runs were
    stopped at 7.5 and 6 epoch-equivalents and kept as records.
 
+18. **The readouts, the trained table and the recipe, judged (18 November 2026, evening; tables in `results.md`).**
+   Attention over the 431 block tokens is indistinguishable from the mean (within 0.0003 at every validation; best
+   0.6723 against 0.6722): with LayerNormed tokens, a disease-specific weighting of whole blocks adds nothing the shared
+   head did not have. The flat readout gains on the common diseases (I10 +0.006, E78 +0.007 over the mean) and loses on
+   the rare ones (its gain correlates with the log case count, r = 0.42), for +0.0006 on the mean and a worse tuning
+   cross-entropy: 829,000 weights overfit the rare diseases at 216,000 participants. The trained copies with the
+   epsilon that lets the table move (κ 10⁻², ε 10⁻⁸) tracked the frozen run to three epoch-equivalents and then fell,
+   to the covariate floor by the seventh (0.6632, stopped early), while the frozen run with the same mixer held 0.670
+   to 0.672. The table's distance from its warm start grew by 1.4%, 2.1%, 3.2% and 4.3% of its scale at steps 6,813,
+   10,000, 14,678 and 21,544: linearly in steps after the first epoch, where an aimless walk grows as the square root.
+   Once each participant comes round again their label pushes the same entries the same way, so the table memorises
+   the training labels and the tuning AUROC falls as it does. A step small enough to avoid this in ten passes cannot
+   move the table either (κ 10⁻³: 0.4%). At this rung, then, end-to-end training of the full per-SNP table is either
+   idle or harmful, and the first layer that works is the cross-fitted ridge, frozen: the stacking ablation of
+   section 5 rather than the end-to-end model of section 2, which has now failed at the top rung in every form tried
+   (from zero, warm-started and erased, warm-started and leaking, warm-started and throttled, warm-started and free).
+   The recipe check (`run_diag_folds_recipe.sh`: input mask 0, dropout 0.2, everything else the same) gave the best
+   run so far, 0.6735 at ten epoch-equivalents and still rising, equal to the twin (0.6732), above the covariates for
+   all 30 diseases and above the masked frozen run for 24 of 30: masking 40% of a fixed linear first layer's inputs
+   puts noise of a token's own size on the training tokens that the clean tuning tokens never see. **Launched** to put
+   seed spreads under these differences (`run_diag_seeds.sh`, GPUs 3 and 4, 21:55Z, about seven hours): seeds 2 and 3
+   of the no-mask frozen mean run, and the untested combination of the no-mask recipe with the flat readout (seeds 1
+   and 2). **For Robert:** whether the ladder's deep arm is this frozen stacked model, or a first layer with far fewer
+   trainable parameters (one gain per SNP multiplying its ridge profile, started at one: 1.26 million numbers whose
+   gradient sums over the 16 dimensions, learned per-locus shrinkage; a day's work), and which recipe and readout the
+   grid runs.
+
 ## References
 
 Kaplan J, McCandlish S, Henighan T, et al. Scaling laws for neural language models. arXiv
