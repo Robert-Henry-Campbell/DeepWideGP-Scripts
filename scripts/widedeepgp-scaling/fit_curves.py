@@ -10,9 +10,12 @@ of PGI/pgi/curves.py and runs every estimand of plan section 6 (design document 
         per-person tuning scores are expected and whether they exist).
     python fit_curves.py fit --table <dir>/tidy.csv --out <dir>
                              [--manifest <dir>/scores_manifest.csv --dataset <rung dir> --bootstrap 2000]
+                             [--basis spline]
         Point estimates from the table alone; with the manifest and a dataset directory (its
         samples_val.tsv and store.json), the shared-protocol values and bootstrap intervals from the
         per-person scores. Writes one CSV per result table, <out>/<name>.csv (aggregates only).
+        --basis spline repeats the per-person fit with the flexible covariate basis: the robustness
+        check of PGI methods 6.1. Give it an --out of its own.
 """
 import argparse
 import glob
@@ -168,10 +171,16 @@ def person_from(table, manifest_path, dataset, split="val"):
     return curves.Person(y=tune[labels].to_numpy(float), cov=tune[covariates], labels=labels, K=K, scores=scores)
 
 
-def fit(table_path, out, manifest_path=None, dataset=None, B=2000, split="val", unlock_test=False):
+def fit(table_path, out, manifest_path=None, dataset=None, B=2000, split="val", unlock_test=False, basis=None):
     """curves.analyse on one split's rows of the table, with the per-person scores when a manifest
     and a dataset directory are given (hours at the real size: launch detached, CLAUDE.md section
-    1). The test split needs --unlock_test and appends the access to <out>/test_access.log."""
+    1). The test split needs --unlock_test and appends the access to <out>/test_access.log.
+    ``basis`` is the shared protocol's covariate basis (None: PGI's methods.yaml combine.basis);
+    "spline" is the robustness check and needs the per-person scores, because the table's values
+    were made with the protocol's own basis."""
+    if basis and not (manifest_path and dataset):
+        raise SystemExit("--basis needs the per-person scores (--manifest and --dataset): the table's values hold "
+                         "the protocol's own basis")
     if split == "test":
         if not unlock_test:
             raise SystemExit("the test split is locked: pass --unlock_test only at the joint unlock (PGI methods 6.4)")
@@ -182,7 +191,7 @@ def fit(table_path, out, manifest_path=None, dataset=None, B=2000, split="val", 
     if "split" in table:
         table = table[table.split == split]
     person = person_from(table, manifest_path, dataset, split) if manifest_path and dataset else None
-    results = curves.analyse(table, person, B=B)
+    results = curves.analyse(table, person, B=B, basis=basis)
     os.makedirs(out, exist_ok=True)
     for name, df in results.items():
         df.to_csv(os.path.join(out, f"{name}.csv"), index=False)
@@ -207,6 +216,9 @@ def main(argv=None):
     f.add_argument("--bootstrap", type=int, default=2000)
     f.add_argument("--split", default="val")
     f.add_argument("--unlock_test", action="store_true", help="required for --split test; the joint unlock only")
+    f.add_argument("--basis", default=None, choices=("linear", "spline"),
+                   help="covariate basis of the shared protocol (default: PGI's methods.yaml combine.basis); "
+                        "spline = the robustness check of PGI methods 6.1 (needs --manifest and --dataset)")
     a = ap.parse_args(argv)
     if a.cmd == "gather":
         t, m = gather(a.runs, a.pgi_results, a.datasets, a.sldsc, a.power)
@@ -216,7 +228,7 @@ def main(argv=None):
         print(f"{len(t)} rows ({t.family.nunique()} families, {t.rung.nunique()} rungs, {t.disease.nunique()} diseases); "
               f"{int(m.exists.sum())} of {len(m)} score files present -> {a.out}")
     else:
-        r = fit(a.table, a.out, a.manifest, a.dataset, a.bootstrap, a.split, a.unlock_test)
+        r = fit(a.table, a.out, a.manifest, a.dataset, a.bootstrap, a.split, a.unlock_test, a.basis)
         if not (a.manifest and a.dataset):
             print("TABLE ONLY, a quick look: the deep gains are against the deep arm's own covariates-only model and the PGI "
                   "gains against the tuning-set refit; no intervals, so no decision below is reportable and the null is undetermined.")

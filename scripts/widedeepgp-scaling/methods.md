@@ -97,6 +97,11 @@ protocol reproduces `tune_metrics.csv`: to 1e-12 in the tests, and on the real b
 (LDpred2-auto, 30 diseases, 17 Nov) to 1.8e-8 in ΔAUROC and 4.7e-7 in the covariates' AUROC, the
 float32 storage of the scores.
 
+**The robustness check** (`fit --basis spline`, into an output folder of its own) repeats the
+per-person fit with the flexible covariate basis for every family. It needs the manifest and a
+dataset directory: the table's values were made with the protocol's own basis, so the table-only
+quick look refuses `--basis`.
+
 **"lin", the strongest linear method.** With per-person scores, PGI methods 6.3's rule: the tuning
 participants are split in two halves by one seeded permutation (seed 1, unstratified); per disease
 and rung the methods are ranked by their gain on one half, the best is judged on the other, the

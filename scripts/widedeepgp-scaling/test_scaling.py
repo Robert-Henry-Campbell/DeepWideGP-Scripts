@@ -304,6 +304,13 @@ def test_the_per_person_fit_runs_on_the_real_layout_and_the_test_split_is_locked
     assert len(r["size_summary"]) == 1 and r["size_summary"].axis.iloc[0] == "mixer size"
     assert r["null"].null.iloc[0] in (True, False)                 # every clause measured: sizes, a twin and intervals
     assert (tmp_path / "fit_val" / "pooled.csv").exists() and not (tmp_path / "fit_val" / "test_access.log").exists()
+    # the robustness check of PGI methods 6.1: the same fit with the flexible covariate basis, from the scores only
+    flexible = F.fit(args[0], str(tmp_path / "fit_spline"), *args[2:], basis="spline")["cells"]
+    assert set(flexible.family) == set(cells.family) and len(flexible) == len(cells)
+    assert not np.allclose(flexible.delta_auroc, cells.delta_auroc)
+    with pytest.raises(SystemExit, match="per-person scores"):
+        F.fit(args[0], str(tmp_path / "fit_table_spline"), basis="spline")
+    assert not (tmp_path / "fit_table_spline").exists()
     capsys.readouterr()
     with pytest.raises(SystemExit, match="locked"):
         F.fit(*args[:1], str(tmp_path / "fit_test"), *args[2:], split="test")
