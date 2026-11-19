@@ -96,8 +96,23 @@ natural prevalence, not a worse ranking.
 The quick run's twin with the covariates removed from the model (`--dm snps`; methods, "Without covariates"), otherwise
 identical: dataset, settings, seed, validation cadence and patience. Yardsticks on the tuning set without covariates: the
 cross-fitted block ridge PRS alone 0.5989; the PGI arm's scores alone, C+T 0.594, lassosum2 0.604, LDpred2-auto 0.615,
-SBayesRC 0.616; chance 0.5. Filled in when `runs/nocov/run_nocov.log` records the run's exit.
+SBayesRC 0.616; chance 0.5. Trained on GPU 4, 03:34 to 04:47Z, stopped early after eight passes without gain.
 
 | run | covariates | tuning AUROC | average precision | best at (epoch-equivalents) | stopped at | ridge PRS alone | with covariates |
 |---|---|---|---|---|---|---|---|
-| `classic_i10_n215872_nocov` | none | | | | | 0.5989 | 0.6987 (`classic_i10_n215872_quick`) |
+| `classic_i10_n215872_nocov` | none | 0.5176 | 0.3256 (prevalence 0.3128) | 5.25 | 7.26 | 0.5989 | 0.6987 (`classic_i10_n215872_quick`) |
+
+Tuning AUROC by epoch-equivalent:
+
+| epoch-equivalents | 0.25 | 1.00 | 2.00 | 3.00 | 4.00 | 5.00 | 5.25 | 6.01 | 7.01 | 7.26 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| no covariates | 0.5127 | 0.5135 | 0.5161 | 0.5134 | 0.5144 | 0.5154 | 0.5176 | 0.5144 | 0.5129 | 0.5130 |
+
+Reading. The network learns a little genetic signal and no more: 0.5176 is four standard errors above chance (SE about
+0.0044) and the curve sits between 0.511 and 0.518 from the first validation on, so the best pass carries some selection.
+That is 18% of the gain of the ridge PRS alone over chance ((0.5176 − 0.5) / (0.5989 − 0.5)), and below every PGI score
+alone (0.594 to 0.616). With the covariates the same network sat at the floor (0.6987 against 0.6990): a genotype score this
+weak adds next to nothing to the covariates' 0.699, so the covariate comparison hid little. At this size the published
+architecture extracts a fifth of a linear score's signal from its own SNPs; the deficit is the architecture's or its
+training's, not the covariates'. The LD-block network on the frozen ridge table, by contrast, holds about three quarters of
+the linear signal (`widedeepgp-blocks/results.md`, "The no-covariate comparison at the top rung").

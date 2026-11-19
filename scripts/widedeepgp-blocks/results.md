@@ -262,11 +262,70 @@ above, 0.6735 with covariates: S3 transformer, Privé blocks, fold-routed ridge 
 dropout 0.2, all 30 diseases, ten epoch-equivalents, seed 1) and `classic_i10_n215872_nocov` (the classic DeepGP for I10 at the
 published settings, 0.6987 with covariates; its table is in `classic-deepgp-comparator/results.md`, "Without covariates").
 Yardsticks on the tuning set without covariates: the cross-fitted block ridge PRS alone 0.5666 mean (I10 0.5989); the PGI arm's
-scores alone for I10, C+T 0.594, lassosum2 0.604, LDpred2-auto 0.615, SBayesRC 0.616; chance 0.5. Rows are added when the
-runs finish (`runs/nocov/run_nocov.log`).
+scores alone for I10, C+T 0.594, lassosum2 0.604, LDpred2-auto 0.615, SBayesRC 0.616; chance 0.5. Added after the runs: the
+linear read of the table itself (`nocov_yardsticks.py`; methods item 20): a logistic regression of each label on the 16
+block-summed channels of the frozen table, fitted on the training rows' out-of-fold scores, 0.5716 mean; and the ridge PRS
+projected onto the table's 16-dimensional basis, 0.5649. Both runs ended normally on GPU 4 (`runs/nocov/run_nocov.log`):
+the classic run 03:34 to 04:47Z, the block run 04:50 to 06:59Z (129 minutes for ten epoch-equivalents, alone on its GPU).
 
-Mean tuning AUROC over the 30 diseases by epoch-equivalent:
+Mean tuning AUROC over the 30 diseases by epoch-equivalent (one validation every quarter; the full curve is the run's
+`metrics.csv`):
 
-| run | covariates | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | best (at epoch-eq) | ridge PRS alone | with covariates |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| blocks_S3_folds_frozen_nomask_nocov | none | | | | | | | | | | | | 0.5666 | 0.6735 |
+| run | covariates | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | best (at epoch-eq) | linear read of the table | ridge PRS alone | with covariates |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| blocks_S3_folds_frozen_nomask_nocov | none | 0.5428 | 0.5456 | 0.5467 | 0.5479 | 0.5482 | 0.5497 | 0.5495 | 0.5501 | 0.5514 | 0.5516 | 0.5517 (9.76) | 0.5716 | 0.5666 | 0.6737 (seeds 1-3) |
+
+Per disease (tuning set; "gain with covariates" is the AUROC over the covariates-only logistic model; the network with
+covariates is the mean of seeds 1 to 3 of `diag_S3_folds_frozen_nomask`; table `results/hm3plus/nocov_yardsticks.csv`):
+
+| disease | tuning cases | network, no covariates | linear read of the table | ridge PRS alone | network − linear read | largest block's share of PRS variance | network gain with covariates | PRS gain with covariates |
+|---|---|---|---|---|---|---|---|---|
+| I10 | 6,255 | 0.5807 | 0.5993 | 0.5989 | -0.0186 | 0.015 | +0.0164 | +0.0239 |
+| E78 | 3,153 | 0.5696 | 0.5820 | 0.5705 | -0.0124 | 0.019 | +0.0132 | +0.0130 |
+| K57 | 2,784 | 0.5440 | 0.5764 | 0.5834 | -0.0324 | 0.028 | +0.0057 | +0.0226 |
+| K21 | 2,387 | 0.5554 | 0.5675 | 0.5530 | -0.0121 | 0.024 | +0.0145 | +0.0133 |
+| K44 | 2,271 | 0.5503 | 0.5693 | 0.5658 | -0.0190 | 0.022 | +0.0104 | +0.0181 |
+| K29 | 2,238 | 0.5508 | 0.5618 | 0.5455 | -0.0110 | 0.026 | +0.0105 | +0.0092 |
+| I25 | 2,126 | 0.5720 | 0.5811 | 0.5660 | -0.0091 | 0.019 | +0.0097 | +0.0082 |
+| M19 | 1,966 | 0.5535 | 0.5624 | 0.5508 | -0.0089 | 0.026 | +0.0095 | +0.0077 |
+| I84+K64 | 1,962 | 0.5359 | 0.5514 | 0.5424 | -0.0155 | 0.018 | +0.0123 | +0.0172 |
+| C44 | 1,676 | 0.5222 | 0.5821 | 0.5839 | -0.0599 | 0.022 | +0.0024 | +0.0185 |
+| M17 | 1,675 | 0.5569 | 0.5774 | 0.5678 | -0.0205 | 0.024 | +0.0126 | +0.0173 |
+| I48 | 1,670 | 0.5391 | 0.5772 | 0.5798 | -0.0381 | 0.021 | +0.0029 | +0.0102 |
+| E11 | 1,663 | 0.5888 | 0.6294 | 0.6191 | -0.0406 | 0.019 | +0.0223 | +0.0342 |
+| E66 | 1,478 | 0.5928 | 0.6138 | 0.6001 | -0.0210 | 0.015 | +0.0542 | +0.0605 |
+| M54 | 1,310 | 0.5640 | 0.5724 | 0.5557 | -0.0084 | 0.016 | +0.0265 | +0.0146 |
+| D12 | 1,309 | 0.5421 | 0.5512 | 0.5506 | -0.0091 | 0.018 | +0.0088 | +0.0083 |
+| I20 | 1,284 | 0.5841 | 0.5974 | 0.5714 | -0.0133 | 0.015 | +0.0135 | +0.0101 |
+| E03 | 1,211 | 0.5370 | 0.6097 | 0.6195 | -0.0727 | 0.138 | +0.0075 | +0.0337 |
+| K40 | 1,140 | 0.5066 | 0.5254 | 0.5705 | -0.0188 | 0.036 | +0.0007 | +0.0096 |
+| K80 | 1,118 | 0.5425 | 0.5636 | 0.5765 | -0.0211 | 0.016 | +0.0109 | +0.0243 |
+| M16 | 1,106 | 0.5133 | 0.5356 | 0.5748 | -0.0223 | 0.014 | -0.0003 | +0.0162 |
+| N17 | 1,007 | 0.5493 | 0.5639 | 0.5407 | -0.0146 | 0.016 | +0.0062 | +0.0028 |
+| J44 | 986 | 0.5797 | 0.5837 | 0.5746 | -0.0040 | 0.015 | +0.0136 | +0.0142 |
+| N18 | 943 | 0.5565 | 0.5664 | 0.5603 | -0.0099 | 0.024 | +0.0080 | +0.0079 |
+| M23 | 872 | 0.5479 | 0.5597 | 0.5446 | -0.0118 | 0.014 | +0.0115 | +0.0111 |
+| M81 | 840 | 0.5102 | 0.5397 | 0.5403 | -0.0295 | 0.014 | +0.0001 | +0.0016 |
+| I95 | 834 | 0.5375 | 0.5490 | 0.5361 | -0.0115 | 0.013 | +0.0035 | +0.0027 |
+| I50 | 814 | 0.5558 | 0.5714 | 0.5568 | -0.0156 | 0.012 | +0.0056 | +0.0050 |
+| M47 | 797 | 0.5431 | 0.5515 | 0.5279 | -0.0084 | 0.018 | +0.0065 | +0.0021 |
+| I21 | 730 | 0.5681 | 0.5763 | 0.5709 | -0.0082 | 0.019 | +0.0086 | +0.0100 |
+| **mean** | | **0.5517** | **0.5716** | **0.5666** | **-0.0199** | | **+0.0109** | **+0.0149** |
+
+Reading.
+- **The network's genetic signal is real.** Without covariates it reaches 0.5517, far above chance, and it holds about three
+  quarters of the linear signal in both settings: (0.5517 − 0.5) / (0.5716 − 0.5) = 72% of the linear read of its own table
+  without covariates, and 0.0109 / 0.0149 = 73% of the ridge PRS's gain over the covariates with them. The with-covariate
+  result was not an artefact of the covariates, and the stacked model is not suspect on that ground.
+- **The shortfall is the network's, not the table's.** The 16 channels lose almost nothing (the projected PRS 0.5649 against
+  0.5666), and a linear read of them reaches 0.5716, above the PRS alone; the network falls below that linear read for all 30
+  diseases (median −0.015, mean −0.020). It reads less from its input than a 17-parameter logistic regression does.
+- **The same diseases fail with and without covariates.** The per-disease shortfall without covariates (network − linear read)
+  correlates 0.81 with the shortfall with them (network gain − PRS gain over the covariates). The largest are E03 (−0.073),
+  C44 (−0.060), E11 (−0.041), I48 (−0.038), K57 (−0.032) and M81 (−0.030), on which the table keeps 83% to 97% of the PRS
+  weights' variance. Concentration explains E03 only: 14% of its PRS variance sits in one block (HLA), ten times the median
+  disease; over the other 29 the largest block's share does not track the shortfall (Spearman −0.15 over all 30). Why the
+  mean readout loses C44, I48 and E11 is not established.
+- **Still rising at the budget's end**, by about 0.0005 per epoch-equivalent over the last four; at that pace the gap to the
+  linear read (0.020) would not close within a feasible budget. One seed; configuration (a)'s seed spread with covariates
+  was 0.0002.

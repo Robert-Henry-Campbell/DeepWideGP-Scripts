@@ -1075,6 +1075,15 @@ simplification, are:
       logistic-ridge twin without covariates (`fit_block_linear.py` fits the 12 covariates unpenalised; a refit is
       about ten CPU-hours at the top rung). The PRS alone stands in: with covariates the twin beat the PRS for 3 of 30
       diseases, so the two linear reads of the channels are within 0.005 of each other.
+    - **Yardsticks added after the runs** (`nocov_yardsticks.py`, `results/hm3plus/nocov_yardsticks.csv`): the PRS alone
+      left room for the doubt that the 16-wide table had dropped a disease's signal before the network saw it. The table
+      is the fold ridges' 90 columns projected on one global 16-dimensional basis (75.4% of the full ridge weights'
+      variance), and the projection commutes with the sum over blocks, so two covariate-free reads of the table follow
+      from the stored scores: the ridge PRS projected on the basis, and a logistic regression of each label on the 16
+      block-summed channels fitted on the training rows' out-of-fold scores (the linear read of the table; 17
+      parameters per disease, no penalty), both scored on the tuning set. The script reproduces the manifest's variance
+      kept (0.754) and the PRS-alone AUROCs (0.5666). Also the share of each disease's PRS variance in its largest block
+      (block channel variances, between-block covariance ignored). Result: `results.md`.
     - **Reading, stated before the runs.** The frozen first layer feeds the network the same channels the ridge PRS sums,
       so (a) should land near the PRS alone (0.567 mean) if the network's output carried the genetic signal when the
       covariates were present; a result near 0.5 would say the network's gain over the floor with covariates was not a
