@@ -163,6 +163,11 @@ its pseudo-fold model; summed over the 15 blocks: 30 diseases × 5 penalties per
    decision's basis, because one chromosome's signal is too small for 20,000 tuning rows alone.
 6. The within-block "other" bucket as the rare-haplotype fallback (no SNP fallback inside the test).
 
+7. **Clumping and thresholding (19 Nov, section 9):** every haplotype column as a pseudo-SNP, the
+   marginal test linear on the residualised label, clumping inside Privé blocks with the PGI arm's
+   r² grid and window, its 15 thresholds, the candidate chosen on the out-of-fold training AUROC,
+   and a union arm clumped across both feature sets.
+
 ## 8. What this test cannot say
 
 Nothing about optimisation: whether a network trains better on orthogonal haplotype indicators than
@@ -170,7 +175,63 @@ on collinear dosages is a training question, measured only by building it. Nothi
 variation (the "other" bucket). Nothing about phasing error (unmeasured; it attenuates B, not A).
 Nothing about blocks that straddle Privé boundaries (none are allowed). One chromosome, one rung.
 
-## 9. Files
+## 9. The same comparison under clumping and thresholding (19 November 2026)
+
+Robert asked, after the interim reading of the ridges (`results.md`), for the comparison under the
+simplest PGI as well: clump and threshold the SNPs, clump and threshold the haploblocks the same
+way, score each as the weighted sum of marginal effects, and compare the two scores. The PGI arm's
+C+T (`PGI/methods.md` section 5.1) is the template: marginal effects from a GWAS, plink2 clumping
+within 250 kb at r² of 0.1, 0.2, 0.5 and 0.8, 15 p-value thresholds log-spaced from 5 × 10⁻⁸ to 1,
+the index SNP's BETA as its weight, the best of the 60 candidates chosen afterwards.
+
+**How a haploblock can be clumped and thresholded.** A haploblock with H common haplotypes is a
+multi-allelic locus; five codings were considered. (1) Every haplotype as a pseudo-SNP: the copy
+count of each haplotype (and of "other") is a column with its own marginal test, and clumping by
+r² runs over all columns, within and across haploblocks; two near-complementary haplotypes of one
+block are correlated at r² near 1 and the rule keeps the lead one, while a dozen haplotypes at 10%
+each sit at r² near 0.01 and all survive. (2) One lead haplotype per haploblock (haplotype against
+all others), clumped across blocks: each haploblock a biallelic locus. (3) A block-level omnibus
+test on all H columns jointly, thresholded on the block's p, blocks clumped against each other by
+LD, each kept block scored with its jointly fitted haplotype effects. (4) A collapsed risk-haplotype
+count: within each training fold, haplotypes split into risk and protective by the sign of their
+effect, the copies of risk haplotypes summed into one 0/1/2 feature per block, then SNP-style C+T
+on those pseudo-SNPs, which adds a selection step the SNP arm lacks. (5) Reference coding: the
+commonest haplotype of each block dropped as the baseline, the rest as in (1). **Coding (1) is
+primary**, because it treats SNPs and haplotypes identically; the others are not run.
+
+**Design, matching the ridge comparison wherever the two can match.**
+- **Features:** the ridge's standardised SNP dosages (A), the standardised haplotype counts of
+  section 4 (B, unscaled, since the marginal effect of a standardised column is scale-free), and
+  their union (C). A haplotype column's position is its haploblock's midpoint.
+- **Marginal effects per fold:** over the fold model's training rows (four fifths of the 215,872),
+  the Pearson correlation of each column with the label residualised on [1, covariates] (the
+  fold-fitted coefficients the ridge uses), from the same per-block grams, and its two-sided
+  p-value from the t statistic. This is the linear score test, not REGENIE's Firth logistic test:
+  one matrix product per block and fold instead of 4.7 million logistic fits; at these effect
+  sizes the two agree. The PGI arm's REGENIE GWAS is not reused because it was fitted on all
+  215,872 training rows, which would make the out-of-fold evaluation set in-sample.
+- **Clumping:** greedy by p-value (p1 = p2 = 1) inside each Privé block, within ± 250 kb, at the
+  r² grid of the PGI arm, with r² from the fold model's own training rows. Clumps never cross a
+  Privé block (the PGI arm's plink2 clumping may, within 250 kb, across the low-LD boundary; not
+  material). In C, a haplotype column redundant with a kept SNP is removed and vice versa.
+- **Score:** Σ_j β̂_j z_j over the kept columns passing the threshold, with β̂_j the marginal
+  correlation and z_j the standardised feature: PLINK `--score` with BETA weights up to scale and
+  shift, since BETA on the raw dosage equals the correlation times SD(residual)/SD(dosage). The
+  unweighted risk-allele count is not run.
+- **Cross-fitting, candidate choice, evaluation, decision rule:** as sections 5 and 6: training
+  rows scored by the fold that excluded them, tuning rows by their pseudo-fold; the candidate
+  (r², p) per disease and parametrisation chosen on the out-of-fold training AUROC of the raw score
+  (the PGI arm chooses on the tuning set, which here is the report set); r with the residualised
+  label and ΔAUROC on both evaluation sets; B − A and C − A with the paired bootstrap; the rule of
+  section 6. The fixed candidate reported beside the choice is r² 0.1 with p ≤ 1, every clumped
+  column with its weight, the least-selected score. The out-of-fold AUROC of every candidate is
+  kept (`results/ct_curve_chr22_<cell>.csv`) so that the threshold curves of the two
+  parametrisations can be compared without selection.
+- **Code:** `compare_ct.py`, sharing the features, grams, routing, bootstrap and evaluation of
+  `compare_ridge.py` (whose evaluation stage became the function `evaluate`, parallel over
+  diseases, with no change to its numbers); `run_ct_chr22.sh`.
+
+## 10. Files
 
 `export_chr22.py` (hard calls to PLINK 1 binary, the genetic map, an aggregate export record),
 `run_phase_chr22.sh` (plink2 to BCF, index, phase_common, index; detached, logs and exit lines),

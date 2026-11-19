@@ -22,6 +22,7 @@ import time
 import numpy as np
 import pandas as pd
 import torch
+from joblib import Parallel, delayed
 from sklearn.linear_model import LogisticRegression
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "widedeepgp-blocks"))
@@ -80,9 +81,14 @@ def route_scores(Z, folds, W):
     return out
 
 
-def choose(S, y, n_pen):
-    """Penalty index per disease with the highest AUROC of the raw score on the given rows."""
-    return np.array([int(np.nanargmax([auroc(S[:, n_pen * j + p], y[:, j]) for p in range(n_pen)])) for j in range(y.shape[1])])
+def candidate_auroc(S, y, n_cand):
+    """AUROC of the raw score per disease and candidate on the given rows: float64 [n_labels, n_cand]."""
+    return np.array([[auroc(S[:, n_cand * j + c], y[:, j]) for c in range(n_cand)] for j in range(y.shape[1])])
+
+
+def choose(S, y, n_cand):
+    """Candidate index per disease with the highest AUROC of the raw score on the given rows."""
+    return np.nanargmax(candidate_auroc(S, y, n_cand), axis=1)
 
 
 def pick(S, choice, n_pen):
@@ -135,6 +141,71 @@ def ci(x):
     if len(x) == 1:
         return float(x[0]), float("nan"), float("nan")
     return float(x[0]), float(np.percentile(x[1:], 2.5)), float(np.percentile(x[1:], 97.5))
+
+
+def _evaluate_disease(j, lab, Sc, y, cov, R, n_tr, sets, Wt):
+    """One disease: covariate-only and covariate-plus-score logits, the bootstrap rows of every metric, the table row
+    and the bootstrap rows of every B - A and C - A difference (for pooling)."""
+    cov_logit = logistic(cov[:n_tr], y[:n_tr, j], [cov[:n_tr], cov[n_tr:]])
+    logits = {p: logistic(np.column_stack([cov[:n_tr], Sc[p][:n_tr, j]]), y[:n_tr, j],
+                          [np.column_stack([cov[sl], Sc[p][sl, j]]) for sl in sets.values()]) for p in PARAMS}
+    boots = {}
+    for k, (name, sl) in enumerate(sets.items()):
+        boots[("auroc", name, "cov")] = boot_auroc(cov_logit[k], y[sl, j], Wt[name])
+        for p in PARAMS:
+            boots[("auroc", name, p)] = boot_auroc(logits[p][k], y[sl, j], Wt[name])
+            boots[("r", name, p)] = boot_corr(Sc[p][sl, j], R[sl, j], Wt[name])
+    row, diffs = dict(label=lab, cases_train=int(y[:n_tr, j].sum()), cases_val=int(y[n_tr:, j].sum())), {}
+    for name in sets:
+        row[f"auroc_cov_{name}"] = boots[("auroc", name, "cov")][0]
+        for p in PARAMS:
+            row[f"r_{p}_{name}"] = boots[("r", name, p)][0]
+            row[f"dauroc_{p}_{name}"] = boots[("auroc", name, p)][0] - boots[("auroc", name, "cov")][0]
+        for p in ("hap", "both"):
+            for metric in ("r", "auroc"):
+                d = diffs[(metric, name, p)] = boots[(metric, name, p)] - boots[(metric, name, "snp")]
+                e, lo, hi = ci(d)
+                row[f"d{metric}_{p}_minus_snp_{name}"], row[f"d{metric}_{p}_minus_snp_{name}_lo"], row[f"d{metric}_{p}_minus_snp_{name}_hi"] = e, lo, hi
+    return row, diffs
+
+
+def evaluate(S, y, cov, B, n_tr, labels, n_cand, cand_name, cand_value, fixed, n_boot, jobs=1):
+    """Candidate per disease and parametrisation chosen on the out-of-fold training AUROC of the raw score (never on
+    the tuning set); r with the residualised label and the AUROC gain over covariates on the out-of-fold training rows
+    and the tuning set; B - A and C - A with paired participant bootstrap intervals, per disease and pooled. S maps
+    "snp"/"hap"/"both" to scores [n, n_cand * n_labels] (column n_cand * disease + candidate), the first n_tr rows the
+    training rows; cand_value(i) names candidate i in the tables' <cand_name>_<param> columns; the fixed candidate is
+    reported with point estimates only (None for none). Returns the per-disease rows, the pooled rows and the
+    out-of-fold AUROC of every candidate per parametrisation ([n_labels, n_cand])."""
+    n_lab = y.shape[1]
+    R = y - np.column_stack([np.ones(len(y)), cov]) @ B[K_FOLDS]
+    sets = {"oof_train": slice(0, n_tr), "val": slice(n_tr, None)}
+    Wt_all = {k: boot_weights(len(range(*sl.indices(len(y)))), n_boot) for k, sl in sets.items()}
+    by_cand = {p: candidate_auroc(S[p][:n_tr], y[:n_tr], n_cand) for p in PARAMS}
+    tags = [("chosen", {p: np.nanargmax(by_cand[p], axis=1) for p in PARAMS})]
+    if fixed is not None:
+        tags.append((f"{cand_name}_{cand_value(fixed)}", {p: np.full(n_lab, fixed) for p in PARAMS}))
+    rows_out, pooled = [], []
+    for tag, ch in tags:
+        Wt = {k: w if tag == "chosen" else w[:1] for k, w in Wt_all.items()}    # the fixed candidate: point estimates only
+        Sc = {p: pick(S[p], ch[p], n_cand) for p in PARAMS}
+        out = Parallel(n_jobs=jobs, backend="threading")(delayed(_evaluate_disease)(j, lab, Sc, y, cov, R, n_tr, sets, Wt)
+                                                         for j, lab in enumerate(labels))
+        for j, (row, _) in enumerate(out):
+            row.update(penalties=tag, **{f"{cand_name}_{p}": cand_value(ch[p][j]) for p in PARAMS})
+            rows_out.append(row)
+            print(f"{tag} {row['label']}: val dAUROC snp {row['dauroc_snp_val']:+.4f} hap {row['dauroc_hap_val']:+.4f} both {row['dauroc_both_val']:+.4f}; "
+                  f"oof r snp {row['r_snp_oof_train']:.4f} hap {row['r_hap_oof_train']:.4f} both {row['r_both_oof_train']:.4f}", flush=True)
+        for name in sets:
+            for p in ("hap", "both"):
+                for metric in ("r", "auroc"):
+                    d = np.mean([diffs[(metric, name, p)] for _, diffs in out], axis=0)
+                    e, lo, hi = ci(d)
+                    point = [diffs[(metric, name, p)][0] for _, diffs in out]
+                    pooled.append(dict(penalties=tag, metric=metric, set=name, comparison=f"{p}_minus_snp", mean_diff=e, lo=lo, hi=hi,
+                                       median_diff=float(np.median(point)), n_positive=int(sum(v > 0 for v in point)),
+                                       n_negative=int(sum(v < 0 for v in point)), n_boot=n_boot))
+    return rows_out, pooled, by_cand
 
 
 def main(argv=None):
@@ -213,48 +284,8 @@ def main(argv=None):
              labels=np.array(rung.labels), **{f"score_{p}": S[p].astype(np.float32) for p in PARAMS})
 
     # 2. evaluation: penalty chosen on the out-of-fold training rows; metrics there and on the tuning set
-    R = y - np.column_stack([np.ones(len(y)), cov]) @ B[K_FOLDS]
-    sets = {"oof_train": slice(0, n_tr), "val": slice(n_tr, None)}
-    Wt_all = {k: boot_weights(len(range(*sl.indices(len(y)))), a.n_boot) for k, sl in sets.items()}
-    choice = {p: choose(S[p][:n_tr], y[:n_tr], n_pen) for p in PARAMS}
-    fixed = {p: np.full(n_lab, a.h2.index(0.15) if 0.15 in a.h2 else n_pen // 2) for p in PARAMS}
-    rows_out, pooled = [], []
-    for tag, ch in (("chosen", choice), ("h2_0.15", fixed)):
-        Wt = {k: w if tag == "chosen" else w[:1] for k, w in Wt_all.items()}    # the fixed penalty: point estimates only
-        boots = {}                                             # (metric, set, param, j) -> bootstrap rows
-        for j, lab in enumerate(rung.labels):
-            cov_logit = logistic(cov[:n_tr], y[:n_tr, j], [cov[:n_tr], cov[n_tr:]])
-            logits = {p: logistic(np.column_stack([cov[:n_tr], pick(S[p][:n_tr], ch[p], n_pen)[:, j]]), y[:n_tr, j],
-                                  [np.column_stack([cov[sl], pick(S[p][sl], ch[p], n_pen)[:, j]]) for sl in sets.values()]) for p in PARAMS}
-            for k, (name, sl) in enumerate(sets.items()):
-                boots[("auroc", name, "cov", j)] = boot_auroc(cov_logit[k], y[sl, j], Wt[name])
-                for p in PARAMS:
-                    boots[("auroc", name, p, j)] = boot_auroc(logits[p][k], y[sl, j], Wt[name])
-                    boots[("r", name, p, j)] = boot_corr(pick(S[p][sl], ch[p], n_pen)[:, j], R[sl, j], Wt[name])
-            row = dict(label=lab, penalties=tag, cases_train=int(y[:n_tr, j].sum()), cases_val=int(y[n_tr:, j].sum()),
-                       **{f"h2_{p}": a.h2[ch[p][j]] for p in PARAMS})
-            for name in sets:
-                row[f"auroc_cov_{name}"] = boots[("auroc", name, "cov", j)][0]
-                for p in PARAMS:
-                    row[f"r_{p}_{name}"] = boots[("r", name, p, j)][0]
-                    row[f"dauroc_{p}_{name}"] = boots[("auroc", name, p, j)][0] - boots[("auroc", name, "cov", j)][0]
-                for p in ("hap", "both"):
-                    for metric in ("r", "auroc"):
-                        d = boots[(metric, name, p, j)] - boots[(metric, name, "snp", j)]
-                        e, lo, hi = ci(d)
-                        row[f"d{metric}_{p}_minus_snp_{name}"], row[f"d{metric}_{p}_minus_snp_{name}_lo"], row[f"d{metric}_{p}_minus_snp_{name}_hi"] = e, lo, hi
-            rows_out.append(row)
-            print(f"{tag} {lab}: val dAUROC snp {row['dauroc_snp_val']:+.4f} hap {row['dauroc_hap_val']:+.4f} both {row['dauroc_both_val']:+.4f}; "
-                  f"oof r snp {row['r_snp_oof_train']:.4f} hap {row['r_hap_oof_train']:.4f} both {row['r_both_oof_train']:.4f}", flush=True)
-        for name in sets:
-            for p in ("hap", "both"):
-                for metric in ("r", "auroc"):
-                    d = np.mean([boots[(metric, name, p, j)] - boots[(metric, name, "snp", j)] for j in range(n_lab)], axis=0)
-                    e, lo, hi = ci(d)
-                    point = [boots[(metric, name, p, j)][0] - boots[(metric, name, "snp", j)][0] for j in range(n_lab)]
-                    pooled.append(dict(penalties=tag, metric=metric, set=name, comparison=f"{p}_minus_snp", mean_diff=e, lo=lo, hi=hi,
-                                       median_diff=float(np.median(point)), n_positive=int(sum(v > 0 for v in point)),
-                                       n_negative=int(sum(v < 0 for v in point)), n_boot=a.n_boot))
+    rows_out, pooled, _ = evaluate(S, y, cov, B, n_tr, rung.labels, n_pen, "h2", lambda i: a.h2[i],
+                                   a.h2.index(0.15) if 0.15 in a.h2 else n_pen // 2, a.n_boot, jobs=min(a.threads, n_lab))
     pd.DataFrame(rows_out).to_csv(os.path.join(a.results, f"compare_chr{chrom}_{a.cell}.csv"), index=False, float_format="%.5f")
     pd.DataFrame(pooled).to_csv(os.path.join(a.results, f"compare_chr{chrom}_{a.cell}_pooled.csv"), index=False, float_format="%.5f")
     save_json(os.path.join(haplo, f"compare_chr{chrom}_{a.cell}.json"),

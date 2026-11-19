@@ -166,6 +166,7 @@ def test_read_haplotypes_parses_a_phased_bcf_and_checks_order(tmp_path):
 import torch  # noqa: E402
 from sklearn.metrics import roc_auc_score  # noqa: E402
 
+import compare_ct as ct  # noqa: E402
 import compare_ridge as cr  # noqa: E402
 from build_block_ridge import residual_coefficients, solve_block  # noqa: E402
 from ridge_common import K_FOLDS  # noqa: E402
@@ -260,6 +261,67 @@ def test_the_logistic_combination_scores_out_of_sample():
 
 
 sys.path.insert(0, os.path.join(HERE, "..", "widedeepgp-blocks"))
+# ---- clumping and thresholding (compare_ct.py) ----------------------------------------------------------------
+
+def test_marginal_correlations_and_p_values_match_scipy_per_fold_model():
+    """From the per-fold grams, each fold model's correlation of every column with the label residualised on the
+    covariates, and its p-value, equal scipy's pearsonr over that model's rows; a constant column has corr 0, p 1."""
+    from scipy.stats import pearsonr
+    rng = np.random.default_rng(3)
+    n, p, n_lab, n_cov = 400, 6, 2, 3
+    Z = rng.standard_normal((n, p))
+    Z[:, 5] = 1.0                                             # constant
+    cov = rng.standard_normal((n, n_cov))
+    y = (Z[:, 0] * 0.3 + cov[:, 0] * 0.5 + rng.standard_normal(n) > 0.5).astype(np.float64)
+    y = np.column_stack([y, rng.integers(0, 2, n).astype(np.float64)])
+    folds = np.arange(n) % K_FOLDS
+    B = residual_coefficients(y, cov, folds)
+    t = np.column_stack([y, np.ones(n), cov])
+    G, T = cr.block_grams(Z, folds, t)
+    G, T = G.numpy(), T.numpy()
+    A = np.column_stack([np.ones(n), cov])
+    for f in range(K_FOLDS):
+        sel = folds != f
+        r = y[sel] - A[sel] @ B[f]
+        Gm, Tm = (G.sum(0) - G[f]), (T.sum(0) - T[f])
+        corr, pval = ct.marginal(np.diag(Gm), Tm, B[f], sel.sum(), r.sum(0), (r * r).sum(0))
+        for j in range(n_lab):
+            for k in range(5):
+                ref = pearsonr(Z[sel, k], r[:, j])
+                assert corr[k, j] == pytest.approx(ref[0], abs=1e-10) and pval[k, j] == pytest.approx(ref[1], rel=1e-6)
+        assert corr[5].tolist() == [0.0, 0.0] and pval[5].tolist() == [1.0, 1.0]
+        C = ct.correlation(Gm, Tm[:, n_lab], sel.sum())
+        assert np.allclose(C[:5, :5], np.corrcoef(Z[sel][:, :5].T), atol=1e-10)
+
+
+def test_clumping_is_greedy_by_p_within_the_window_and_above_the_r2_threshold():
+    """Hand-worked: five columns at 0, 100, 200, 600 and 700 kb; r2 0.5 between columns 0 and 1, 0.3 between 1 and
+    2, 0.9 between 3 and 4, 0.05 elsewhere; p-values 1e-5, 1e-3, 1e-4, 1e-6, 0.5. At r2 0.1 the kept set is
+    [3, 0, 2]; at 0.6 column 1 survives; with column 4 moved beyond the window it survives at 0.1."""
+    pos = np.array([0.0, 100e3, 200e3, 600e3, 700e3])
+    pval = np.array([1e-5, 1e-3, 1e-4, 1e-6, 0.5])
+    C = np.full((5, 5), np.sqrt(0.05))
+    np.fill_diagonal(C, 1.0)
+    for i, j, r2 in [(0, 1, 0.5), (1, 2, 0.3), (3, 4, 0.9)]:
+        C[i, j] = C[j, i] = np.sqrt(r2)
+    remove = lambda r2, pos: (np.abs(pos[:, None] - pos[None, :]) <= 250e3) & (C * C > r2)
+    assert ct.clump(pval, remove(0.1, pos)).tolist() == [3, 0, 2]
+    assert ct.clump(pval, remove(0.6, pos)).tolist() == [3, 0, 2, 1]
+    far = pos.copy()
+    far[4] = 1000e3
+    assert ct.clump(pval, remove(0.1, far)).tolist() == [3, 0, 2, 4]
+    # thresholding: a kept column carries its correlation only below the threshold, column layout n_cand * j + c
+    corr = np.column_stack([np.array([0.1, -0.2, 0.3, -0.4, 0.05]), np.zeros(5)])
+    W = ct.ct_weights(corr, np.column_stack([pval, np.ones(5)]), C, pos, [0.1], 250e3)
+    assert W.shape == (5, 2 * len(ct.P_GRID))
+    last = len(ct.P_GRID) - 1                                 # p <= 1: every kept column
+    assert np.flatnonzero(W[:, last]).tolist() == [0, 2, 3] and W[[0, 2, 3], last].tolist() == [0.1, 0.3, -0.4]
+    strict = int(np.flatnonzero(ct.P_GRID >= 1e-5)[0])        # the first threshold admitting p = 1e-5 (not 1e-4)
+    assert set(np.flatnonzero(W[:, strict]).tolist()) == {0, 3}
+    assert (W[:, len(ct.P_GRID):] == 0).all()                 # disease 2: every p is 1, nothing passes below 1
+    assert np.flatnonzero(W[:, 2 * len(ct.P_GRID) - 1]).tolist() == [] or ct.P_GRID[-1] == 1.0
+
+
 from test_block_ridge import build as build_synthetic  # noqa: E402
 from ridge_common import MISSING, Rung, load_partition  # noqa: E402
 
@@ -315,7 +377,7 @@ def test_compare_ridge_runs_end_to_end_on_the_synthetic_store_and_reproduces_the
     pd.DataFrame(dict(block=seg["block"], start_pos=seg["start"], end_pos=seg["end"], n_snps=seg["end"] - seg["start"],
                       H=seg["H"], coverage=seg["cover"])).to_csv(os.path.join(res, "haploblocks_chr1_f0.01_c0.95_segments.csv"), index=False)
     mf.main(["--results", res, "--chrom", "1", "--cell", "f0.01_c0.95"])
-    stem = os.path.join(res, "figure_chr1_f0.01_c0.95")
+    stem = os.path.join(res, "figure_ridge_chr1_f0.01_c0.95")
     assert all(os.path.getsize(stem + ext) > 0 for ext in (".png", ".pdf", "_data.csv", "_legend.md"))
     fig = pd.read_csv(stem + "_data.csv")
     plotted = fig[fig["comparison"] != "histogram"]
@@ -323,3 +385,24 @@ def test_compare_ridge_runs_end_to_end_on_the_synthetic_store_and_reproduces_the
     assert (plotted["lo"] <= plotted["estimate"]).all() and (plotted["estimate"] <= plotted["hi"]).all()
     assert fig[fig["comparison"] == "histogram"]["estimate"].sum() == len(seg["H"])
     assert str(len(seg["H"])) in open(stem + "_legend.md").read()
+    # clumping and thresholding on the same features and codes
+    ct.main([d["dir"], "--chrom", "1", "--partition", d["part"], "--cell", "f0.01_c0.95", "--n_boot", "20", "--threads", "2", "--results", res])
+    n_cand = len(ct.R2_GRID) * len(ct.P_GRID)
+    table = pd.read_csv(os.path.join(res, "compare_ct_chr1_f0.01_c0.95.csv"))
+    pooled = pd.read_csv(os.path.join(res, "compare_ct_chr1_f0.01_c0.95_pooled.csv"))
+    assert len(table) == 2 * n_lab and set(table["penalties"]) == {"chosen", "cand_r2_0.1_p_1.0e+00"} and len(pooled) == 16
+    assert table["cand_snp"].str.startswith("r2_").all() and table["dauroc_hap_minus_snp_val"].notna().all()
+    curve = pd.read_csv(os.path.join(res, "ct_curve_chr1_f0.01_c0.95.csv"))
+    assert len(curve) == 3 * n_lab * n_cand
+    chosen = table[table["penalties"] == "chosen"].set_index("label")
+    for lab in rung.labels:                                   # the choice is the best out-of-fold AUROC over the 60 candidates
+        c = curve[(curve["param"] == "hap") & (curve["label"] == lab)].reset_index(drop=True)
+        best = c.loc[c["auroc_oof_train"].idxmax()]
+        assert chosen.loc[lab, "cand_hap"] == f"r2_{best['r2']:g}_p_{best['p']:.1e}"
+    clumps = pd.read_csv(os.path.join(res, "ct_clumps_chr1_f0.01_c0.95.csv"))
+    assert len(clumps) == 3 * len(blocks) and (clumps["kept_r2_0.1_p_1"] <= clumps["kept_r2_0.8_p_1"]).all()
+    assert (clumps["kept_r2_0.8_p_1"] <= clumps["columns"]).all() and (clumps["kept_r2_0.1_p_1"] > 0).all()
+    sc = np.load(os.path.join(haplo, "scores_ct_chr1_f0.01_c0.95.npz"), allow_pickle=True)
+    assert sc["score_snp"].shape == (len(rows), n_lab) and len(sc["candidates"]) == n_cand
+    mf.main(["--results", res, "--chrom", "1", "--cell", "f0.01_c0.95", "--method", "ct"])
+    assert os.path.getsize(os.path.join(res, "figure_ct_chr1_f0.01_c0.95.png")) > 0

@@ -13,9 +13,11 @@ import pandas as pd
 
 MM = 1 / 25.4
 INK, INK2, AXIS, GRID = "#0b0b0b", "#52514e", "#c3c2b7", "#e1e0d9"
-SERIES = {"hap_minus_snp": ("#2a78d6", "o", "haplotype ridge (B) minus SNP ridge (A)"),
-          "both_minus_snp": ("#d9731a", "s", "both (C) minus SNP ridge (A)")}
+SERIES = {"hap_minus_snp": ("#2a78d6", "o", "haplotype score (B) minus SNP score (A)"),
+          "both_minus_snp": ("#d9731a", "s", "both (C) minus SNP score (A)")}
 SETS = {"oof_train": "out-of-fold training rows", "val": "tuning set"}
+METHODS = {"ridge": ("compare", "ridge, fitted per Privé block with the penalty chosen per disease on the out-of-fold training AUROC"),
+           "ct": ("compare_ct", "clumping-and-thresholding score (marginal effects summed over the clumped columns passing the threshold, the r² and threshold chosen per disease on the out-of-fold training AUROC)")}
 
 
 def style(plt):
@@ -48,6 +50,7 @@ def main(argv=None):
     ap.add_argument("--results", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "results"))
     ap.add_argument("--chrom", default="22")
     ap.add_argument("--cell", default="f0.01_c0.95")
+    ap.add_argument("--method", choices=list(METHODS), default="ridge")
     a = ap.parse_args(argv)
     import matplotlib
     matplotlib.use("Agg")
@@ -55,8 +58,9 @@ def main(argv=None):
     import matplotlib.ticker
     style(plt)
     seg = pd.read_csv(os.path.join(a.results, f"haploblocks_chr{a.chrom}_{a.cell}_segments.csv"))
-    table = pd.read_csv(os.path.join(a.results, f"compare_chr{a.chrom}_{a.cell}.csv"))
-    pooled = pd.read_csv(os.path.join(a.results, f"compare_chr{a.chrom}_{a.cell}_pooled.csv"))
+    stem_in, what = METHODS[a.method]
+    table = pd.read_csv(os.path.join(a.results, f"{stem_in}_chr{a.chrom}_{a.cell}.csv"))
+    pooled = pd.read_csv(os.path.join(a.results, f"{stem_in}_chr{a.chrom}_{a.cell}_pooled.csv"))
     table = table[table["penalties"] == "chosen"].sort_values("cases_train", ascending=False).reset_index(drop=True)
     pooled = pooled[(pooled["penalties"] == "chosen") & (pooled["metric"] == "auroc")]
     data = long_table(table, pooled)
@@ -86,13 +90,13 @@ def main(argv=None):
         ax.set_yticks(y)
         ax.set_yticklabels(labels)
         ax.set_ylim(-0.6, n_dis + 0.6)
-        ax.set_xlabel("ΔAUROC against the SNP ridge")
+        ax.set_xlabel("ΔAUROC against the SNP score")
         ax.grid(axis="y", visible=False)
     axes[1].set_title(f"b  {SETS['oof_train']}", loc="left")
     axes[2].set_title(f"c  {SETS['val']}", loc="left")
     handles = [plt.Line2D([], [], color=v[0], marker=v[1], ms=2.6, mew=0, linestyle="none", label=v[2]) for v in SERIES.values()]
     fig.legend(handles=handles, loc="lower center", ncol=2, bbox_to_anchor=(0.6, 0.0), handletextpad=0.3, columnspacing=1.5)
-    stem = os.path.join(a.results, f"figure_chr{a.chrom}_{a.cell}")
+    stem = os.path.join(a.results, f"figure_{a.method}_chr{a.chrom}_{a.cell}")
     fig.savefig(stem + ".png")
     fig.savefig(stem + ".pdf")
     data["H"] = np.nan
@@ -100,13 +104,13 @@ def main(argv=None):
     pd.concat([data, hist], ignore_index=True).to_csv(stem + "_data.csv", index=False, float_format="%.5f")
     n_boot = int(pooled["n_boot"].iloc[0])
     with open(stem + "_legend.md", "w") as f:
-        f.write(f"**Haplotype against SNP ridge on chromosome {a.chrom} (cell {a.cell}).** "
+        f.write(f"**Haplotype against SNP {a.method} on chromosome {a.chrom} (cell {a.cell}).** "
                 f"**a**, Number of common haplotypes H per haploblock (training frequency at least the cell's floor; the band marks "
                 f"3 to 10, the range the design assumed), over the {len(seg):,} haploblocks cut from the chromosome's "
                 f"{int(seg['n_snps'].sum()):,} HapMap3+ SNPs. **b**, **c**, Per disease, the gain in AUROC over the covariate-only model "
-                f"of the haplotype-count ridge (B) and of the ridge on both feature sets (C), each minus the gain of the SNP-dosage "
-                f"ridge (A) fitted on the same Privé blocks, cross-fitted over five folds with the penalty chosen per disease on the "
-                f"out-of-fold training AUROC; **b** on the out-of-fold training rows, **c** on the tuning set. Points are the "
+                f"of the haplotype-count score (B) and of the score on both feature sets (C), each minus the gain of the SNP-dosage "
+                f"score (A) on the same Privé blocks, cross-fitted over five folds; each score is a {what}; "
+                f"**b** on the out-of-fold training rows, **c** on the tuning set. Points are the "
                 f"paired difference and bars its 95% participant bootstrap interval ({n_boot:,} resamples); the last row pools the "
                 f"30 diseases (mean of the per-disease differences, bootstrap over the same resamples). Diseases are ordered by "
                 f"training cases, most first. Data: `{os.path.basename(stem)}_data.csv`.\n")
