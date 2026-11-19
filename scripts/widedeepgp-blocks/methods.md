@@ -1024,8 +1024,12 @@ simplification, are:
      from one pass of masked-SNP pretraining (`pretrain_blocks.py`, 15% of SNPs hidden, AdamW 1e-3, no labels; its
      first run at scale) and then trained end to end. Pretraining is confined to the unclumped set on purpose: a
      masked lead among leads at r² < 0.1 within 250 kb has next to nothing to be predicted from. The arms therefore
-     differ in two things at once; the run that separates them, the unclumped set from zero, is one command on the
-     same store and is queued for the next free GPU rather than run now (Robert, 19 November).
+     differ in two things at once; the run that separates them, **C** `sel_p01any_S3_zero`, the unclumped set from
+     zero, was added the same morning (`chains/run_selected_c.sh`, which waits for the main chain's last GPU launch
+     so the two never race for a GPU) once it was put to Robert that pretraining can hurt: a pretrained table hands
+     the mixer participant-specific LD-factor features before any label signal exists, which can speed memorisation
+     through the mixer, and a strong start along LD directions can take a pass to rotate towards the disease
+     directions; early stopping bounds both, but "no worse than zero" is not guaranteed.
    - **Settings.** S3 transformer (d 64, 4 layers, 4 heads), mean readout, the no-mask recipe of item 18 (input mask
      0, dropout 0.2), lr 1e-4, weight decay 1e-3, batch 64, bf16, plateau schedule, plain cross-entropy at natural
      prevalence, ten epoch-equivalents, validation every quarter. The table: κ 0.1 (step κ√B/√M: 1.2e-3 per entry per
