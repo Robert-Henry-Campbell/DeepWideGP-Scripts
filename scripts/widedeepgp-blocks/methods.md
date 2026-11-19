@@ -1029,8 +1029,7 @@ simplification, are:
      first run at scale) and then trained end to end. Pretraining is confined to the unclumped set on purpose: a
      masked lead among leads at r² < 0.1 within 250 kb has next to nothing to be predicted from. The arms therefore
      differ in two things at once; the run that separates them, **C** `sel_p01any_S3_zero`, the unclumped set from
-     zero, was added the same morning (`chains/run_selected_c.sh`, which waits for the main chain's last GPU launch
-     so the two never race for a GPU) once it was put to Robert that pretraining can hurt: a pretrained table hands
+     zero, was added the same morning once it was put to Robert that pretraining can hurt: a pretrained table hands
      the mixer participant-specific LD-factor features before any label signal exists, which can speed memorisation
      through the mixer, and a strong start along LD directions can take a pass to rotate towards the disease
      directions; early stopping bounds both, but "no worse than zero" is not guaranteed.
@@ -1048,9 +1047,17 @@ simplification, are:
      gradient descent; an arm at or above its ridge is the first end-to-end result worth a grid. The curve per
      epoch-equivalent is reported, as always; a rise then a fall is the memorisation signature of item 18.
    - **Chain** `chains/run_selected.sh` (detached; log `runs/selected/chain.log`): build (a) from the main store
-     (about three hours), partition, folds, block ridge (GPU), pretraining (GPU), arm B; build (b) from store (a),
-     partition, folds, block ridge, arm A; the two twins on the CPU; every step skipped by its product. GPU steps take
-     a GPU among 2 to 4 only when at least two are free. Results: `results.md`, "Selected-SNP from-scratch arms".
+     (about three hours) and its partition, then four branches in parallel: the block ridge (GPU) and twin (CPU) of
+     (a); pretraining then arm B; arm C; build (b) from store (a), its partition, folds, ridge, arm A and twin. Arms B
+     and C wait for the training-set SNP statistics that the ridge of (a) computes (written in one piece by the data
+     module but not by the ridge). Every step is skipped by its product; a failed branch is logged and the others go
+     on. GPUs: any free GPU among 2 to 4, no reserve (Robert, 19 November, 13:15Z), handed out through claim files
+     under a lock. Results: `results.md`, "Selected-SNP from-scratch arms".
+   - **Execution record.** The first launch (01:43Z) built store (a) and its partition by 04:18Z and then died
+     silently: a shell variable expanded before it was assigned, under `set -u`, with the script's errors sent to
+     /dev/null; found at 13:07Z. Fixed and relaunched at 13:10Z; restarted at about 13:30Z as the parallel chain
+     above, which adopted the block ridge of (a) already running on GPU 3 rather than start it again. No product
+     was lost or recomputed, and no training had started before the restart.
 
 20. **The no-covariate comparison at the top rung (19 November 2026; Robert's request).** Every number so far holds the
     12 covariates, and the covariate floor (0.6627 mean, I10 0.6990) is most of every model's AUROC; Robert's concern of
