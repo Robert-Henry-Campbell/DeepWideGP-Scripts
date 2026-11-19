@@ -24,15 +24,21 @@ N=215872
 mkdir -p "$OUT/logs"
 [ -e "$OUT/run_selected.sh" ] || cp "$0" "$OUT/run_selected.sh"
 say() { echo "$(date -u +%FT%TZ) $*" >> "$LOG"; }
-fail() { say "FAILED: $*"; say "exit 1"; exit 1; }
+fail() { say "FAILED: $*"; say "exit 1"; FAILED=1; exit 1; }
+# the script's own errors go to a log, and any exit that is neither the end nor fail() is recorded as a failure,
+# so the chain cannot die silently (19 Nov: an unbound variable under set -u killed it unseen) and the waiter stops
+exec 2>> "$OUT/logs/chain_stderr.log"
+FAILED=0; DONE=0
+trap '[ $DONE = 1 ] || [ $FAILED = 1 ] || { say "FAILED: unexpected exit (see logs/chain_stderr.log)"; say "exit 1"; }' EXIT
 
-H=$(git -C "$ROOT/DeepWideGP" rev-parse --short widening) || fail "git"
-CODE=$OUT/code_$H
-if [ ! -d "$CODE" ]; then
+CODE=$(ls -d "$OUT"/code_* 2>/dev/null | head -n 1)     # the arms share one frozen copy: reuse it on a relaunch
+if [ -z "$CODE" ]; then
+    H=$(git -C "$ROOT/DeepWideGP" rev-parse --short widening) || fail "git"
+    CODE=$OUT/code_$H
     rm -rf "${CODE:?}.tmp" && mkdir -p "$CODE.tmp" && git -C "$ROOT/DeepWideGP" archive widening | tar -x -C "$CODE.tmp" \
         && mv "$CODE.tmp" "$CODE" || fail "code export"
 fi
-say "starting from code_$H, pid $$"
+say "starting from $(basename "$CODE"), pid $$"
 
 free_gpus() {   # the indices among 2, 3 and 4 with no compute process
     local busy; busy=$(nvidia-smi --query-compute-apps=gpu_uuid --format=csv,noheader 2>/dev/null)
@@ -65,7 +71,7 @@ partition() {   # name
     say "partition $part: $(tail -n 1 "$OUT/logs/partition_$name.log")"
 }
 folds_and_ridge() {   # name
-    local name=$1 d=$DS/${name}_n$N part=$PARTS/prive_$1 gpu
+    local name=$1 gpu; local d=$DS/${1}_n$N part=$PARTS/prive_$1     # one local per line: bash expands before it assigns
     [ -e "$d/blocks/folds.npz" ] || (cd "$BLOCKS" && $PY make_folds.py "$d" --splits train val) >> "$OUT/logs/ridge_$name.log" 2>&1 \
         || fail "folds $name (logs/ridge_$name.log)"
     [ -e "$d/blocks/ridge_manifest.json" ] && { say "ridge $name: exists"; return; }
@@ -75,7 +81,7 @@ folds_and_ridge() {   # name
     say "ridge $name: done"
 }
 pretrain() {    # name -> <dataset>/blocks/pretrained_d16.pt
-    local name=$1 d=$DS/${name}_n$N gpu
+    local name=$1 gpu; local d=$DS/${1}_n$N
     [ -e "$d/blocks/pretrained_d16.pt" ] && { say "pretrain $name: exists"; return; }
     gpu=$(take_gpu); say "pretrain $name: starting on GPU $gpu"
     (cd "$CODE" && CUDA_VISIBLE_DEVICES=$gpu OMP_NUM_THREADS=10 MKL_NUM_THREADS=10 $PY pretrain_blocks.py --out "$d/blocks/pretrained_d16.pt" \
@@ -123,4 +129,5 @@ twin p01any
 twin p01anyct
 for p in $TRAIN_PIDS; do wait "$p"; done
 for r in sel_p01any_S3_pretrained sel_p01anyct_S3_zero; do say "train $r: $(tail -n 1 "$OUT/logs/train_$r.log")"; done
+DONE=1
 say "exit 0"
