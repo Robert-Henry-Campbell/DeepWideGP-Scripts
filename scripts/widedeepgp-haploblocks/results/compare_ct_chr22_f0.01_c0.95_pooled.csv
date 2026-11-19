@@ -1,0 +1,17 @@
+penalties,metric,set,comparison,mean_diff,lo,hi,median_diff,n_positive,n_negative,n_boot
+chosen,r,oof_train,hap_minus_snp,-0.00100,-0.00171,-0.00025,-0.00073,9,21,2000
+chosen,auroc,oof_train,hap_minus_snp,-0.00009,-0.00015,-0.00002,-0.00004,8,22,2000
+chosen,r,oof_train,both_minus_snp,-0.00024,-0.00073,0.00026,-0.00013,13,16,2000
+chosen,auroc,oof_train,both_minus_snp,-0.00001,-0.00005,0.00003,-0.00000,12,17,2000
+chosen,r,val,hap_minus_snp,0.00030,-0.00204,0.00267,0.00034,15,15,2000
+chosen,auroc,val,hap_minus_snp,0.00010,-0.00011,0.00031,-0.00000,15,15,2000
+chosen,r,val,both_minus_snp,0.00092,-0.00073,0.00258,0.00069,17,12,2000
+chosen,auroc,val,both_minus_snp,0.00006,-0.00006,0.00019,0.00003,15,14,2000
+cand_r2_0.1_p_1.0e+00,r,oof_train,hap_minus_snp,-0.00063,,,-0.00043,11,19,2000
+cand_r2_0.1_p_1.0e+00,auroc,oof_train,hap_minus_snp,-0.00003,,,-0.00002,11,19,2000
+cand_r2_0.1_p_1.0e+00,r,oof_train,both_minus_snp,-0.00053,,,-0.00055,12,18,2000
+cand_r2_0.1_p_1.0e+00,auroc,oof_train,both_minus_snp,-0.00002,,,-0.00001,11,19,2000
+cand_r2_0.1_p_1.0e+00,r,val,hap_minus_snp,0.00128,,,0.00166,20,10,2000
+cand_r2_0.1_p_1.0e+00,auroc,val,hap_minus_snp,-0.00004,,,-0.00004,12,18,2000
+cand_r2_0.1_p_1.0e+00,r,val,both_minus_snp,0.00060,,,0.00114,20,10,2000
+cand_r2_0.1_p_1.0e+00,auroc,val,both_minus_snp,-0.00002,,,-0.00004,13,17,2000

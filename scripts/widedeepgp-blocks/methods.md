@@ -946,7 +946,10 @@ simplification, are:
    [−0.00014, −0.00002]), and the ridge on both feature sets adds at most 1.4% of the SNP ridge's correlation. Under
    the pre-stated rule the haploblock first layer is not built; the two sensitivity cells were stopped at Robert's
    request. A second comparison under clumping and thresholding (every haplotype as a pseudo-SNP, the PGI arm's
-   grid) was run at Robert's request (that methods' section 9; results in its `results.md` section 5).
+   grid) was run at Robert's request (that methods' section 9) and gives the same answer: the haplotype score
+   carries 13% less signal than the SNP score (pooled r −0.0010 [−0.0017, −0.0003], 21 of 30 below zero), the
+   union adds at most 3.4%, and clumping at r² 0.1 removes 83% of SNP columns but only 52% of haplotype columns
+   (its `results.md` section 5).
 
 17. **Block weighting at the readout, and a table that never moved (18 November 2026, afternoon).** The fold-routed
    quick test: the frozen copies rose for two epoch-equivalents and plateaued at 0.671 to 0.672 (best 0.6722 at 7.0,

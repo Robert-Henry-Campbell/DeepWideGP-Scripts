@@ -1,9 +1,9 @@
 # Results: the haploblock pre-test on chromosome 22
 
-Status, 19 November 2026 (02:00 UTC): phasing and the nine haploblock cells complete; the three
+Status, 19 November 2026 (02:30 UTC): phasing and the nine haploblock cells complete; the three
 ridges compared on the primary cell (f = 1%, c = 95%); the two ridge sensitivity cells not run
 (stopped at Robert's request at 00:58 UTC, after the primary cell's interim reading); the
-clumping-and-thresholding comparison of methods section 9 running (section 5 below, to be filled).
+clumping-and-thresholding comparison of methods section 9 complete (section 5).
 Every number is an aggregate over participants; the test split was never read. Methods: `methods.md`.
 
 ## 1. Phasing
@@ -157,4 +157,126 @@ chromosome 22, about 3.5 hours genome-wide) and the model change: about two week
 
 ## 5. Clumping and thresholding (methods section 9)
 
-Running; to be filled.
+Run 19 November, 01:06 to 02:11 UTC (65 minutes on ten threads). Every haplotype column a
+pseudo-SNP; marginal correlations per fold model; greedy clumping inside Privé blocks within 250 kb at r² 0.1,
+0.2, 0.5 and 0.8; 15 thresholds from 5 × 10⁻⁸ to 1; the score the sum of marginal correlation times
+standardised column over the kept columns; the candidate per disease and parametrisation chosen on the
+out-of-fold training AUROC of the raw score. Figure: `figure_ct_chr22_f0.01_c0.95.{png,pdf}` with its data
+and legend. Tables: `compare_ct_chr22_f0.01_c0.95{,_pooled}.csv`, `ct_curve_chr22_f0.01_c0.95.csv`,
+`ct_clumps_chr22_f0.01_c0.95.csv`.
+
+### 5.1 What clumping removes (before any threshold; mean over folds and diseases)
+
+| columns | all | kept at r² 0.1 | 0.2 | 0.5 | 0.8 |
+|---|---|---|---|---|---|
+| SNP (A) | 18,173 | 3,145 (17%) | 4,319 (24%) | 7,242 (40%) | 10,212 (56%) |
+| haplotype (B) | 13,373 | 6,411 (48%) | 8,227 (62%) | 11,305 (85%) | 12,855 (96%) |
+| union (C) | 31,546 | 6,330 (20%) | 8,456 (27%) | 13,801 (44%) | 19,371 (61%) |
+
+Clumping at r² 0.1 shrinks the SNP set six-fold and the haplotype set only two-fold: haplotype columns are far
+less redundant with one another (within a haploblock a dozen haplotypes at a few percent each sit at r² near
+0.01), so the haplotype coding enters thresholding with twice the SNP coding's independent columns, each
+estimated from fewer carriers. In the union the survivors number about the haplotype set's own, so a kept
+haplotype column mostly displaces a SNP column rather than adding to it. The haploblocks themselves are never
+reduced (the 1,038 segments are fixed by the coverage rule); thresholding then drops columns, and whole
+haploblocks where no haplotype passes. The chosen thresholds are loose: p ≤ 1 (every clumped column) for
+11 of 30 SNP scores and 11 of 30 haplotype scores, p ≥ 0.01 for 20 and 24, p ≤ 10⁻⁴ for 4 and 0; at the loose
+end few haploblocks drop out, at the strict end most do.
+
+### 5.2 The threshold curves (mean over diseases of the raw score's out-of-fold AUROC − 0.5)
+
+| r² | p ≤ | SNP (A) | haplotype (B) | union (C) |
+|---|---|---|---|---|
+| 0.1 | 5e-08 | 0.00047 | 0.00020 | 0.00055 |
+| 0.1 | 6e-06 | 0.00147 | 0.00083 | 0.00151 |
+| 0.1 | 7e-04 | 0.00168 | 0.00100 | 0.00174 |
+| 0.1 | 3e-02 | 0.00317 | 0.00273 | 0.00333 |
+| 0.1 | 3e-01 | 0.00487 | 0.00432 | 0.00449 |
+| 0.1 | 1e+00 | 0.00503 | 0.00436 | 0.00443 |
+| 0.8 | 5e-08 | 0.00046 | 0.00020 | 0.00055 |
+| 0.8 | 6e-06 | 0.00156 | 0.00086 | 0.00152 |
+| 0.8 | 7e-04 | 0.00190 | 0.00108 | 0.00201 |
+| 0.8 | 3e-02 | 0.00450 | 0.00334 | 0.00453 |
+| 0.8 | 3e-01 | 0.00606 | 0.00523 | 0.00585 |
+| 0.8 | 1e+00 | 0.00593 | 0.00499 | 0.00561 |
+
+The SNP score is above the haplotype score at every one of the 60 candidates but one (r² 0.1, p ≤ 0.09,
+level), and the best candidates are the loosest (p ≤ 0.3 or 1 at r² 0.8), the ridge-like end of C+T, as
+polygenic traits at this sample size demand. Mean over diseases of each disease's best raw AUROC: A
+0.50817, B 0.50731, C 0.50818.
+
+### 5.3 Pooled over the 30 diseases
+
+| metric | set | comparison | chosen candidate: mean [95% interval] | diseases below / above zero | fixed (r² 0.1, p ≤ 1): mean |
+|---|---|---|---|---|---|
+| r with residual label | out-of-fold training | B − A | -0.00100 [-0.00171, -0.00025] | 21 / 9 | -0.00063 |
+| r with residual label | out-of-fold training | C − A | -0.00024 [-0.00073, +0.00026] | 16 / 13 | -0.00053 |
+| ΔAUROC | out-of-fold training | B − A | -0.00009 [-0.00015, -0.00002] | 22 / 8 | -0.00003 |
+| ΔAUROC | out-of-fold training | C − A | -0.00001 [-0.00005, +0.00003] | 17 / 12 | -0.00002 |
+| r with residual label | tuning | B − A | +0.00030 [-0.00204, +0.00267] | 15 / 15 | +0.00128 |
+| r with residual label | tuning | C − A | +0.00092 [-0.00073, +0.00258] | 12 / 17 | +0.00060 |
+| ΔAUROC | tuning | B − A | +0.00010 [-0.00011, +0.00031] | 15 / 15 | -0.00004 |
+| ΔAUROC | tuning | C − A | +0.00006 [-0.00006, +0.00019] | 14 / 15 | -0.00002 |
+
+### 5.4 Levels
+
+| set | mean r: A, B, C | mean ΔAUROC: A, B, C | B / A (r) | C / A (r) | ridge A for comparison (r) |
+|---|---|---|---|---|---|
+| out-of-fold training (215,872) | 0.0076, 0.0066, 0.0074 | +0.00030, +0.00021, +0.00029 | 0.87 | 0.97 | 0.0063 |
+| tuning (20,000) | 0.0054, 0.0057, 0.0064 | -0.00011, +0.00000, -0.00004 | 1.06 | 1.17 | 0.0067 |
+
+The out-of-fold levels are optimistic by the choice among 60 candidates on the same rows (the ridge chose among
+five): on the tuning set the ridge's SNP score is above the C+T SNP score (r 0.0068 against 0.0054). The
+choice is the same for both parametrisations, so the paired differences carry no such bias.
+
+### 5.5 Per disease
+
+| disease | training cases | chosen (r², p) A / B | r, out-of-fold: A, B, C | B − A, out-of-fold [95%] | C − A, out-of-fold [95%] | ΔAUROC tuning: A, B, C | B − A ΔAUROC tuning [95%] |
+|---|---|---|---|---|---|---|---|
+| I10 | 68,309 | 0.8, 2.7e-02 / 0.8, 2.7e-02 | 0.0157, 0.0153, 0.0159 | -0.0004 [-0.0034, +0.0024] | +0.0002 [-0.0011, +0.0015] | +0.0003, +0.0003, +0.0003 | -0.0001 [-0.0004, +0.0002] |
+| E78 | 34,953 | 0.2, 1.0 / 0.5, 1.0 | 0.0122, 0.0113, 0.0116 | -0.0009 [-0.0034, +0.0016] | -0.0006 [-0.0032, +0.0021] | +0.0006, +0.0003, +0.0003 | -0.0003 [-0.0006, +0.0000] |
+| K57 | 30,506 | 0.1, 2.0e-05 / 0.1, 3.0e-01 | 0.0106, 0.0069, 0.0106 | -0.0037 [-0.0095, +0.0021] | +0.0000 [+0.0000, +0.0000] | +0.0002, +0.0003, +0.0002 | +0.0001 [-0.0008, +0.0010] |
+| K21 | 25,427 | 0.1, 2.7e-02 / 0.2, 3.0e-01 | 0.0093, 0.0066, 0.0090 | -0.0027 [-0.0068, +0.0013] | -0.0004 [-0.0031, +0.0023] | -0.0006, +0.0002, -0.0002 | +0.0009 [-0.0003, +0.0020] |
+| K29 | 24,564 | 0.1, 2.7e-02 / 0.5, 2.7e-02 | 0.0087, 0.0030, 0.0065 | -0.0057 [-0.0095, -0.0018] | -0.0022 [-0.0050, +0.0006] | +0.0009, +0.0004, +0.0008 | -0.0005 [-0.0014, +0.0004] |
+| K44 | 24,297 | 0.8, 1.0 / 0.8, 3.0e-01 | 0.0110, 0.0070, 0.0098 | -0.0040 [-0.0066, -0.0014] | -0.0013 [-0.0028, +0.0001] | -0.0003, -0.0002, -0.0002 | +0.0001 [-0.0006, +0.0009] |
+| I25 | 23,558 | 0.2, 9.1e-02 / 0.5, 1.0 | 0.0089, 0.0057, 0.0073 | -0.0031 [-0.0062, +0.0002] | -0.0015 [-0.0037, +0.0006] | +0.0000, +0.0002, +0.0002 | +0.0002 [-0.0001, +0.0005] |
+| M19 | 21,544 | 0.8, 3.0e-01 / 0.5, 3.0e-01 | 0.0111, 0.0097, 0.0111 | -0.0014 [-0.0043, +0.0013] | +0.0000 [-0.0011, +0.0013] | +0.0005, +0.0003, +0.0004 | -0.0002 [-0.0008, +0.0004] |
+| I84+K64 | 21,296 | 0.5, 9.1e-02 / 0.8, 9.1e-02 | 0.0065, 0.0087, 0.0083 | +0.0022 [-0.0009, +0.0055] | +0.0018 [-0.0002, +0.0039] | -0.0013, -0.0029, -0.0022 | -0.0015 [-0.0035, +0.0002] |
+| I48 | 18,365 | 0.8, 8.2e-03 / 0.5, 8.2e-03 | 0.0157, 0.0129, 0.0159 | -0.0028 [-0.0064, +0.0009] | +0.0002 [-0.0012, +0.0018] | -0.0002, -0.0003, -0.0003 | -0.0001 [-0.0007, +0.0006] |
+| M17 | 18,227 | 0.8, 8.2e-03 / 0.8, 2.5e-03 | 0.0089, 0.0068, 0.0099 | -0.0021 [-0.0064, +0.0020] | +0.0009 [-0.0016, +0.0035] | +0.0004, -0.0008, -0.0005 | -0.0012 [-0.0022, -0.0002] |
+| C44 | 17,671 | 0.5, 2.7e-02 / 0.1, 1.0 | 0.0043, 0.0040, 0.0030 | -0.0003 [-0.0045, +0.0039] | -0.0013 [-0.0039, +0.0013] | +0.0001, -0.0002, +0.0000 | -0.0004 [-0.0007, +0.0001] |
+| E11 | 17,345 | 0.8, 1.0 / 0.8, 1.0 | 0.0092, 0.0101, 0.0097 | +0.0008 [-0.0014, +0.0031] | +0.0005 [-0.0013, +0.0022] | +0.0007, +0.0008, +0.0006 | +0.0001 [-0.0003, +0.0006] |
+| E66 | 16,800 | 0.8, 1.0 / 0.8, 1.0 | 0.0098, 0.0091, 0.0097 | -0.0008 [-0.0031, +0.0016] | -0.0002 [-0.0013, +0.0010] | -0.0009, +0.0001, -0.0004 | +0.0010 [-0.0015, +0.0033] |
+| M54 | 14,550 | 0.2, 1.0 / 0.8, 1.0 | 0.0089, 0.0084, 0.0086 | -0.0005 [-0.0027, +0.0019] | -0.0004 [-0.0022, +0.0015] | -0.0023, -0.0019, -0.0017 | +0.0003 [-0.0009, +0.0016] |
+| D12 | 14,337 | 0.8, 2.5e-03 / 0.5, 3.0e-01 | 0.0058, 0.0031, 0.0049 | -0.0027 [-0.0075, +0.0022] | -0.0009 [-0.0051, +0.0032] | -0.0006, +0.0000, +0.0002 | +0.0006 [-0.0002, +0.0015] |
+| I20 | 14,234 | 0.1, 1.0 / 0.1, 8.2e-03 | 0.0064, 0.0077, 0.0079 | +0.0013 [-0.0038, +0.0063] | +0.0015 [-0.0012, +0.0039] | -0.0001, +0.0001, -0.0000 | +0.0002 [-0.0005, +0.0009] |
+| E03 | 13,242 | 0.5, 2.0e-05 / 0.8, 8.2e-03 | 0.0147, 0.0109, 0.0147 | -0.0039 [-0.0084, +0.0008] | -0.0001 [-0.0013, +0.0013] | +0.0010, +0.0001, +0.0010 | -0.0009 [-0.0024, +0.0007] |
+| K40 | 12,541 | 0.1, 2.0e-05 / 0.1, 2.2e-04 | 0.0023, 0.0061, 0.0050 | +0.0037 [-0.0012, +0.0087] | +0.0027 [-0.0002, +0.0057] | -0.0001, -0.0002, -0.0000 | -0.0001 [-0.0005, +0.0004] |
+| M16 | 12,286 | 0.8, 1.0 / 0.5, 1.0 | 0.0094, 0.0094, 0.0096 | -0.0000 [-0.0026, +0.0024] | +0.0002 [-0.0009, +0.0014] | +0.0004, +0.0005, +0.0005 | +0.0001 [-0.0007, +0.0008] |
+| K80 | 12,194 | 0.1, 7.4e-04 / 0.5, 1.0 | 0.0010, 0.0020, 0.0015 | +0.0010 [-0.0046, +0.0065] | +0.0004 [-0.0049, +0.0057] | +0.0002, -0.0003, -0.0001 | -0.0005 [-0.0009, +0.0000] |
+| N17 | 11,340 | 0.1, 7.4e-04 / 0.8, 9.1e-02 | 0.0050, 0.0055, 0.0033 | +0.0005 [-0.0048, +0.0055] | -0.0017 [-0.0062, +0.0025] | +0.0002, +0.0006, +0.0003 | +0.0004 [-0.0003, +0.0010] |
+| N18 | 10,337 | 0.2, 2.7e-02 / 0.5, 2.7e-02 | 0.0048, 0.0029, 0.0048 | -0.0019 [-0.0057, +0.0018] | +0.0000 [-0.0026, +0.0024] | +0.0002, -0.0000, +0.0000 | -0.0002 [-0.0006, +0.0003] |
+| J44 | 9,884 | 0.1, 1.0 / 0.1, 1.0 | 0.0030, 0.0052, 0.0041 | +0.0022 [-0.0012, +0.0055] | +0.0011 [-0.0016, +0.0037] | +0.0000, -0.0004, -0.0003 | -0.0004 [-0.0009, +0.0000] |
+| M23 | 9,585 | 0.8, 8.2e-03 / 0.1, 2.7e-02 | 0.0085, 0.0048, 0.0073 | -0.0037 [-0.0081, +0.0008] | -0.0012 [-0.0029, +0.0006] | -0.0030, +0.0019, -0.0009 | +0.0048 [+0.0013, +0.0084] |
+| M47 | 9,492 | 0.8, 1.0 / 0.1, 2.7e-02 | 0.0040, 0.0045, 0.0046 | +0.0005 [-0.0037, +0.0050] | +0.0005 [-0.0032, +0.0046] | +0.0002, +0.0006, +0.0006 | +0.0004 [-0.0005, +0.0013] |
+| I95 | 9,153 | 0.1, 5.0e-08 / 0.8, 7.4e-04 | 0.0000, 0.0008, -0.0039 | +0.0008 [-0.0033, +0.0051] | -0.0039 [-0.0078, -0.0001] | +0.0000, +0.0000, -0.0006 | +0.0000 [-0.0001, +0.0002] |
+| I50 | 8,851 | 0.2, 1.0 / 0.1, 3.0e-01 | 0.0027, 0.0012, 0.0015 | -0.0015 [-0.0047, +0.0019] | -0.0012 [-0.0039, +0.0016] | +0.0001, -0.0000, +0.0000 | -0.0001 [-0.0003, +0.0001] |
+| M81 | 8,604 | 0.1, 9.1e-02 / 0.8, 1.0 | 0.0056, 0.0055, 0.0053 | -0.0001 [-0.0034, +0.0032] | -0.0003 [-0.0029, +0.0024] | +0.0003, +0.0005, +0.0005 | +0.0002 [-0.0002, +0.0006] |
+| I21 | 8,090 | 0.5, 1.0 / 0.1, 1.0 | 0.0039, 0.0032, 0.0035 | -0.0007 [-0.0039, +0.0024] | -0.0003 [-0.0031, +0.0026] | +0.0000, -0.0000, +0.0001 | -0.0000 [-0.0004, +0.0004] |
+
+Intervals excluding zero on the out-of-fold rows: B − A below zero for 2 diseases on r
+(above zero for none), 0 on ΔAUROC; C − A below zero for 1, above for
+0. Per disease the comparison is noisier than the ridge's (the candidate choice adds noise); the
+pooled estimate is the reading.
+
+### 5.6 Verdict
+
+The same as the ridge's. **B − A is negative with an interval excluding zero on the out-of-fold rows in both
+metrics** (r -0.00100 [-0.00171, -0.00025], 21 of 30 diseases below zero; ΔAUROC
+-0.00009 [-0.00015, -0.00002], 22 below): under clumping and thresholding the haplotype
+score carries 13% less signal than the SNP score on the same blocks (23% under the ridge), and
+the union's haplotype-specific signal is bounded above at +3.4% of the SNP score's correlation (C − A upper
+limit; 1.4% under the ridge). The tuning set's intervals include zero everywhere, as before. The fixed
+candidate (r² 0.1, p ≤ 1, no selection) shows the same ordering on the out-of-fold rows. Two estimators, the
+same answer: at this sample size the haplotype parametrisation of chromosome 22 is the less sample-efficient
+one, under shrinkage and under selection alike, and the haploblock first layer is not built.
