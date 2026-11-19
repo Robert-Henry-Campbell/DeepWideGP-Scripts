@@ -1051,6 +1051,40 @@ simplification, are:
      partition, folds, block ridge, arm A; the two twins on the CPU; every step skipped by its product. GPU steps take
      a GPU among 2 to 4 only when at least two are free. Results: `results.md`, "Selected-SNP from-scratch arms".
 
+20. **The no-covariate comparison at the top rung (19 November 2026; Robert's request).** Every number so far holds the
+    12 covariates, and the covariate floor (0.6627 mean, I10 0.6990) is most of every model's AUROC; Robert's concern of
+    18 November was over-reliance on them. Two single trainings repeat two reference runs with the covariates removed
+    from the model: `--dm snps` in DeepWideGP (allowed since `widening` of 19 November; until then a genotype-only model
+    was refused) builds no covariate encoder, so the sequence is the block tokens alone and the head reads their mean
+    alone (for the classic network: the 22 chromosome vectors alone through its attention pooling). Everything else
+    is the reference run's: the same participants, SNPs, seed, settings, budget and early stopping.
+    - **Runs.** (a) `runs/nocov/blocks_S3_folds_frozen_nomask_nocov`: the best configuration so far,
+      `diag_S3_folds_frozen_nomask` of item 18 (0.6735; seed 2 0.6737; S3 transformer, Privé blocks, the fold-routed
+      unit-RMS ridge warm start of the per-SNP table frozen, mean readout, no input mask, dropout 0.2, plain
+      cross-entropy at natural prevalence, ten epoch-equivalents, all 30 diseases), without the covariates. (b)
+      `runs/nocov/classic_i10_n215872_nocov`: the classic DeepGP for I10 at the published settings on its 28,536
+      clumped SNPs (`classic_i10_n215872_quick`, 0.6987 = the floor), without the covariates (the classic comparator's
+      methods, "Without covariates"). Launcher `chains/run_nocov.sh` (one GPU per run once two of GPUs 2 to 4 are
+      free; code frozen in `runs/nocov/code_<commit>`); each best snapshot is then scored on the tuning set by
+      `score_snapshots.py`, which still fits the covariates-only model beside it, for the record.
+    - **Yardsticks without covariates**, all on the tuning set: the cross-fitted block ridge PRS alone, 0.5666 mean
+      over the 30 diseases and 0.5989 for I10 (section 11, `results/hm3plus/check_block_ridge.md`); for I10 the PGI
+      arm's scores alone (`PGI/results/hm3plus/tune_metrics.csv`, `auroc_pgi`, which does not depend on the covariate
+      basis): C+T 0.594, lassosum2 0.604, LDpred2-auto 0.615, SBayesRC 0.616; chance 0.5. Not available: a
+      logistic-ridge twin without covariates (`fit_block_linear.py` fits the 12 covariates unpenalised; a refit is
+      about ten CPU-hours at the top rung). The PRS alone stands in: with covariates the twin beat the PRS for 3 of 30
+      diseases, so the two linear reads of the channels are within 0.005 of each other.
+    - **Reading, stated before the runs.** The frozen first layer feeds the network the same channels the ridge PRS sums,
+      so (a) should land near the PRS alone (0.567 mean) if the network's output carried the genetic signal when the
+      covariates were present; a result near 0.5 would say the network's gain over the floor with covariates was not a
+      genotype effect it can express alone (and would make the with-covariate stacking result suspect); a result above
+      the PRS alone would be the first gain of the network over a linear read of the same channels, which the
+      with-covariate comparison (0.6735 against 0.6777) did not show. For (b), at the floor with covariates, chance
+      would say that its 0.699 was the covariates alone; anything clearly above 0.5 (the tuning standard error for I10
+      is about 0.004) is genetic signal the covariate comparison hid. AUROCs without covariates compare only with the
+      covariate-free yardsticks, never with the with-covariate runs; the seed spread of configuration (a) is 0.0002
+      (item 18), so differences below 0.001 are noise. Curves per epoch-equivalent are reported, as always.
+
 ## References
 
 Kaplan J, McCandlish S, Henighan T, et al. Scaling laws for neural language models. arXiv

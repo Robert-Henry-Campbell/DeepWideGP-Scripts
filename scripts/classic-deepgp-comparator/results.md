@@ -90,3 +90,14 @@ neither the sampling nor the architecture carries the published result. The bala
 (best at 2.50 epoch-equivalents against 4.75), having shown each case about twice as often by then; its
 cross-entropy, 0.6262 against the floor's 0.5676, is the expected cost of logits on the balanced scale read at
 natural prevalence, not a worse ranking.
+
+### Without covariates (I10, 19 November 2026)
+
+The quick run's twin with the covariates removed from the model (`--dm snps`; methods, "Without covariates"), otherwise
+identical: dataset, settings, seed, validation cadence and patience. Yardsticks on the tuning set without covariates: the
+cross-fitted block ridge PRS alone 0.5989; the PGI arm's scores alone, C+T 0.594, lassosum2 0.604, LDpred2-auto 0.615,
+SBayesRC 0.616; chance 0.5. Filled in when `runs/nocov/run_nocov.log` records the run's exit.
+
+| run | covariates | tuning AUROC | average precision | best at (epoch-equivalents) | stopped at | ridge PRS alone | with covariates |
+|---|---|---|---|---|---|---|---|
+| `classic_i10_n215872_nocov` | none | | | | | 0.5989 | 0.6987 (`classic_i10_n215872_quick`) |

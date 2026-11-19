@@ -162,3 +162,32 @@ not from dropping controls: every training participant stays in.
 - **Record.** The request was first read as undersampling the controls to the case count (a 1:1 training set
   of 136,618 participants). That dataset and the scripts that made and read it were built, committed and
   withdrawn before any training (Robert's clarification, 18 November, evening); nothing of it remains.
+
+## Without covariates (Robert, 19 November 2026)
+
+The three runs above sit at the covariate floor, so every AUROC they reach may be the covariates'. One run asks what the
+published network reads from its 28,536 SNPs alone, on a scale where the floor is chance.
+
+- **Model.** `--dm snps` (DeepWideGP `widening`, 19 November 2026; before that a genotype-only model was refused): no
+  covariate encoder, so the 22 chromosome vectors alone pass through the attention pooling into the head. Everything else
+  as the quick run `classic_i10_n215872_quick`: the dataset `classic_i10_n215872` (all 215,872 training participants, the
+  28,536 I10 GWAS SNPs at p ≤ 0.05, clumped), the published settings (width 32, one layer, attention pooling, batch 64,
+  learning rate 7 × 10⁻⁴, weight decay 10⁻⁴, dropout 0.2, plain cross-entropy at natural prevalence, constant learning
+  rate), uniform batches, seed 1, validation every 53,952 draws, patience 8. Run `runs/nocov/classic_i10_n215872_nocov`,
+  launcher `widedeepgp-blocks/chains/run_nocov.sh` (shared with the LD-block model's no-covariate run; design document
+  item 20), code frozen in `runs/nocov/code_<commit>`; the best snapshot is then scored on the tuning set by
+  `score_snapshots.py`, which fits the covariates-only logistic regression beside it for the record (it is not this
+  run's floor).
+- **Yardsticks without covariates**, on the tuning set: the cross-fitted block ridge PRS alone for I10, 0.5989 (HM3+
+  SNPs, Privé blocks; `widedeepgp-blocks/results/hm3plus/check_block_ridge.md`); the PGI arm's scores alone for I10
+  (`PGI/results/hm3plus/tune_metrics.csv`, `auroc_pgi`): C+T 0.594, lassosum2 0.604, LDpred2-auto 0.615, SBayesRC
+  0.616; chance 0.5. The classic set's own linear score (a clumping-and-thresholding score on its 28,536 SNPs) is not
+  fitted separately; the PGI arm's C+T on the full panel stands in.
+- **Expectation, stated before the result.** With covariates the network sits at the floor. Near 0.5 without them says
+  that it learned nothing from the SNPs at this size and that its 0.699 was the covariates alone. Clearly above 0.5
+  (the tuning standard error for I10 is about 0.004 with 6,255 cases among 20,000) is genetic signal the covariate
+  comparison hid, i.e. signal the network reads but cannot add to the covariates. Near the scores alone (0.59 to 0.62)
+  would mean the architecture extracts a linear score's worth of signal yet gains nothing when the covariates are
+  added, which would point at the optimisation of the with-covariate run, not the architecture. The AUROC without
+  covariates compares only with the covariate-free yardsticks, never with the runs above. Result: results.md,
+  "Without covariates".

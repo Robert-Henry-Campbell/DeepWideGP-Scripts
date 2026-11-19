@@ -245,3 +245,20 @@ cross-fitted ridge PRS and twin (`results/p01any_n215872/`, `results/p01anyct_n2
 | sel_p01anyct_S3_zero | 95,642 | zero | | | | | | | | | | | | | |
 | sel_p01any_S3_pretrained | 448,493 | masked pretraining | | | | | | | | | | | | | |
 | sel_p01any_S3_zero | 448,493 | zero | | | | | | | | | | | | | |
+
+## The no-covariate comparison at the top rung (19 November 2026; methods.md section 12, item 20)
+
+Two single trainings with the covariates removed from the model (`--dm snps`: no covariate encoder, token or vector), each
+otherwise its reference run: `blocks_S3_folds_frozen_nomask_nocov` (the best configuration so far, `diag_S3_folds_frozen_nomask`
+above, 0.6735 with covariates: S3 transformer, Privé blocks, fold-routed ridge warm start frozen, mean readout, no input mask,
+dropout 0.2, all 30 diseases, ten epoch-equivalents, seed 1) and `classic_i10_n215872_nocov` (the classic DeepGP for I10 at the
+published settings, 0.6987 with covariates; its table is in `classic-deepgp-comparator/results.md`, "Without covariates").
+Yardsticks on the tuning set without covariates: the cross-fitted block ridge PRS alone 0.5666 mean (I10 0.5989); the PGI arm's
+scores alone for I10, C+T 0.594, lassosum2 0.604, LDpred2-auto 0.615, SBayesRC 0.616; chance 0.5. Rows are added when the
+runs finish (`runs/nocov/run_nocov.log`).
+
+Mean tuning AUROC over the 30 diseases by epoch-equivalent:
+
+| run | covariates | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | best (at epoch-eq) | ridge PRS alone | with covariates |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| blocks_S3_folds_frozen_nomask_nocov | none | | | | | | | | | | | | 0.5666 | 0.6735 |
