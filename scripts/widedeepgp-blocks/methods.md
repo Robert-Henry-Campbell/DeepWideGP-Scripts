@@ -937,7 +937,16 @@ simplification, are:
    out-of-fold training rows). Launched 15:36Z as two detached chains (`run_phase_chr22.sh`, `run_analysis_chr22.sh`);
    results in that folder's `results.md` when they arrive. Section 10 puts phased features out of scope on the
    ground that the server had no phasing tool; that ground is gone (bioconda installs SHAPEIT5 and bcftools), and
-   whether a haplotype data product is worth building is what this pre-test decides.
+   whether a haplotype data product is worth building is what this pre-test decides. **Outcome (19 November 2026,
+   `../widedeepgp-haploblocks/results.md`).** Phasing took 6.8 h on ten threads (68 CPU-hours; about 4,700
+   genome-wide). The median haploblock has 14 SNPs and 12 common haplotypes, not 3 to 10, yet 0.74 features per SNP
+   (about 926,000 vectors genome-wide), so the table would have been affordable. The haplotype ridge carries 23% less
+   additive signal than the SNP ridge on the same blocks (pooled r with the residualised label −0.0015 [−0.0021,
+   −0.0008] on the 215,872 out-of-fold training rows, 22 of 30 diseases below zero, none above; ΔAUROC −0.00008
+   [−0.00014, −0.00002]), and the ridge on both feature sets adds at most 1.4% of the SNP ridge's correlation. Under
+   the pre-stated rule the haploblock first layer is not built; the two sensitivity cells were stopped at Robert's
+   request. A second comparison under clumping and thresholding (every haplotype as a pseudo-SNP, the PGI arm's
+   grid) was run at Robert's request (that methods' section 9; results in its `results.md` section 5).
 
 17. **Block weighting at the readout, and a table that never moved (18 November 2026, afternoon).** The fold-routed
    quick test: the frozen copies rose for two epoch-equivalents and plateaued at 0.671 to 0.672 (best 0.6722 at 7.0,
