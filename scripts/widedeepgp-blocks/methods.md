@@ -1102,6 +1102,25 @@ simplification, are:
       covariate-free yardsticks, never with the with-covariate runs; the seed spread of configuration (a) is 0.0002
       (item 18), so differences below 0.001 are noise. Curves per epoch-equivalent are reported, as always.
 
+21. **The fixed first layer computed once per run (19 November 2026; Robert: "caching for frozen table runs").** A
+    frozen table without input masking gives each participant the same 431 × 16 block vectors at every step, yet every
+    frozen run so far (items 15, 17, 18 and 20) re-read and re-multiplied 1.26 million dosages per participant at every
+    step and every validation: about 3 hours for 10 epoch-equivalents at the top rung, the cost that kept the frozen
+    configuration at 10 epoch-equivalents while its curve was still rising (the fairness review of 19 November,
+    `runs/deep_arm_fairness_review_2026-11-19.md`, item A3). DeepWideGP (`widening` d05e545, its methods 4.11) now computes
+    the vectors once per run, for the training and tuning sets, whenever the table is frozen and nothing is masked:
+    automatically, in memory, never for the test set, and with the batches, dropout draws and validations of the streamed
+    run. Checked on the top rung (`chains/cache_check/`; outputs in `runs/cache_check/check_summary.md`): re-scored from
+    the cache, the best frozen no-mask snapshot gives back its tuning AUROC exactly (0.67351); a cached run of one
+    epoch-equivalent follows the streamed run's validations within 0.0002; and a streamed re-score of it gives back its
+    record exactly. A step takes 0.030 s instead of 0.26 s, a validation 0.7 s instead of about 30 s, and building the
+    cache 2 minutes, so a 10 epoch-equivalent run takes about 20 minutes instead of 3 hours. The review's further claim,
+    that 200 epoch-equivalents, a 12-trial search and ten seeds would together cost less than one streamed run, holds
+    only with a much larger batch: at the recipe's batch of 64 an epoch-equivalent takes about 1.7 minutes, so 200 take
+    about 6 hours. What to spend the saving on (longer training, a search, more seeds, or a larger batch with its
+    learning rate checked again) is Robert's decision. Chains already running use frozen code copies and are unaffected;
+    a frozen-table run launched from d05e545 on is cached. Masked and trained-table runs still stream.
+
 ## References
 
 Kaplan J, McCandlish S, Henighan T, et al. Scaling laws for neural language models. arXiv
