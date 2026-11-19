@@ -44,3 +44,21 @@ def test_the_classic_parameters_are_pinned():
     bd = _bd()
     assert (bd.DISEASE, bd.P_MAX, bd.R2, bd.KB, bd.MIN_PER_CHROM) == ("I10", 0.05, 0.1, 250, 3)
     assert list(bd.SIZES.values()) == [13199, 26287, 53498, 107743, 215872]
+
+
+def test_threshold_only_selection_keeps_every_snp_with_a_finite_p_at_or_below_p_max():
+    bd = _bd()
+    ss = table(rs1=0.01, rs2=0.0100001, rs3=np.nan, rs4=0.0, rs5=0.5)
+    assert bd.threshold_ids(ss, 0.01) == {"rs1", "rs4"}                      # at the threshold counts, just above not
+    assert bd.threshold_ids(ss, 1.0) == {"rs1", "rs2", "rs4", "rs5"}         # never a SNP without a p
+    assert bd.selection_rule(0.01, False) == "p <= 0.01 in any disease's GWAS, not clumped"
+    assert bd.selection_rule(0.05, True) == "p <= 0.05 in any disease's GWAS, clumped once on the smallest p"
+
+
+def test_the_parser_defaults_to_the_classic_rule_from_the_main_store():
+    bd = _bd()
+    a = bd.parser().parse_args([])
+    assert (a.p_max, a.no_clump, a.source, a.name, a.diseases, a.rungs) == \
+        (0.05, False, bd.MAIN, "classic_i10", ["I10"], list(bd.SIZES))
+    a = bd.parser().parse_args(["--p_max", "0.01", "--no_clump", "--source", "/x", "--rungs", "hm3plus"])
+    assert (a.p_max, a.no_clump, a.source, a.rungs) == (0.01, True, "/x", ["hm3plus"])

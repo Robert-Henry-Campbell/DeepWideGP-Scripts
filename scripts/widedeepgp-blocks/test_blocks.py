@@ -134,6 +134,18 @@ def test_prive_blocks_come_from_the_reference_block_id_column(tmp_path, store):
     bad = write_tsv(tmp_path / "bad.tsv", [r if r[2] != "rs7" else r[:2] + ("rs70",) + r[3:] for r in rows], header)
     with pytest.raises(SystemExit, match="1 rows are not the store's variant in store order"):
         cp.main(["prive", "--from_reference", bad, "--store", store, "--partitions", str(tmp_path / "parts")])
+    # a reference of a larger panel (a store of selected SNPs): its extra rows are ignored, the store's rows looked up
+    sup = [("1", 0, "rs0", "A", "G", 1)] + rows[:5] + [("1", 0, "rs55", "A", "G", 2)] + rows[5:] + [("2", 0, "rs9", "A", "G", 3)]
+    cp.main(["sub", "--from_reference", write_tsv(tmp_path / "sup.tsv", sup, header), "--store", store,
+             "--partitions", str(tmp_path / "parts")])
+    z = np.load(tmp_path / "parts" / "sub" / "partition.npz")
+    assert z["block_chr1"].tolist() == [0, 0, 1, 1, 1] and z["block_chr2"].tolist() == [2, 2, 2] and z["n_blocks"] == 3
+    short = write_tsv(tmp_path / "short.tsv", [r for r in sup if r[2] != "rs7"], header)
+    with pytest.raises(SystemExit, match="1 of the store's variants are not in it \\(first: rs7\\)"):
+        cp.main(["sub", "--from_reference", short, "--store", store, "--partitions", str(tmp_path / "parts")])
+    with pytest.raises(SystemExit, match="9 rows, but the store has 8"):          # --tsv stays strict
+        cp.main(["sub", "--tsv", write_tsv(tmp_path / "t9.tsv", labelled(IDS, {"1": [0, 0, 1, 1, 1], "2": [2, 2, 3]})
+                                           + [("2", "rs9", 3)]), "--store", store, "--partitions", str(tmp_path / "parts")])
 
 
 def test_the_csv_table_lists_each_partition_per_chromosome_and_overall(tmp_path, store):

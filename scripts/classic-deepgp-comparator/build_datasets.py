@@ -20,11 +20,17 @@ GWAS, clumped once with each SNP's smallest p over the diseases choosing the ind
 selection extended to the 30-disease model (`--diseases`, `--name`; `--rungs` restricts the sizes).
 One disease gives the classic selection exactly.
 
+Two options depart from the classic rule (Robert, 19 November 2026, for the selected-SNP arms of the LD-block
+model): `--p_max` sets the threshold (0.05 by default) and `--no_clump` keeps every SNP at or below it without
+clumping (PRSformer's input rule); `--source` reads the genotypes from another store than the main one, such as
+a store this script built before, when the selection is a subset of it (a fraction of the time).
+
 Prints and logs counts only, never an identifier or a genotype. Participant-level files are
 written only under /mnt/sdg/robert/deepwidegp/data, owner-only.
 
     python build_datasets.py --threads 8
     python build_datasets.py --threads 8 --name classic30 --rungs hm3plus --diseases I10 E78 ... I21
+    python build_datasets.py --threads 8 --name p01any --rungs hm3plus --diseases I10 E78 ... I21 --p_max 0.01 --no_clump
 """
 from __future__ import annotations
 
@@ -87,10 +93,21 @@ def min_p(tables):
     return pd.DataFrame({"SNP": first.index.to_numpy(), "P": np.where(np.isfinite(best), best, np.nan)})
 
 
-def leads(rung, diseases, name, workdir, threads):
-    """The lead SNPs with p <= P_MAX of one training size: plink2 clumping on the LD panel of each SNP's
-    smallest p over the diseases' GWAS (one disease: that GWAS). With --clump-p1 P_MAX and --clump-p2 1,
-    the leads are those the greedy clumping of all SNPs gives (as the PGI arm's C+T), kept where p <= P_MAX."""
+def threshold_ids(ss, p_max):
+    """The SNPs of a [SNP, P] table with a finite p at or below p_max: the selection without clumping."""
+    p = ss["P"].to_numpy(dtype=float)
+    return set(ss["SNP"].to_numpy()[np.isfinite(p) & (p <= p_max)])
+
+
+def selection_rule(p_max, clump):
+    return f"p <= {p_max:g} in any disease's GWAS, " + ("clumped once on the smallest p" if clump else "not clumped")
+
+
+def leads(rung, diseases, name, workdir, threads, p_max=P_MAX, clump=True):
+    """The selected SNPs of one training size, from each SNP's smallest p over the diseases' GWAS (one disease:
+    that GWAS). Clumped: plink2's leads on the LD panel; with --clump-p1 p_max and --clump-p2 1 they are the leads
+    that the greedy clumping of all SNPs gives (as the PGI arm's C+T), kept where p <= p_max. Not clumped: every
+    SNP with p <= p_max."""
     tables = []
     for d in diseases:
         t = pd.read_csv(f"{DATA}/pgi/gwas_sumstats/{rung}/{d}.sumstats.tsv.gz", sep="\t",
@@ -103,10 +120,15 @@ def leads(rung, diseases, name, workdir, threads):
     ss = ss[np.isfinite(ss["P"].to_numpy(dtype=float))]
     inp = os.path.join(workdir, f"{rung}_{name}_p.tsv")
     ss[["SNP", "P"]].to_csv(inp, sep="\t", index=False, float_format="%.17g")
+    p_by_id = dict(zip(ss["SNP"], ss["P"]))
+    counts = {"snps_tested": int(n_tested), "snps_p_at_most_threshold": int((ss["P"] <= p_max).sum())}
+    if not clump:
+        ids = threshold_ids(ss, p_max)
+        return ids, {**counts, "lead_snps": int(len(ids))}, p_by_id
     out = os.path.join(workdir, f"{rung}_{name}")
     env = dict(os.environ, OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1", MKL_NUM_THREADS="1")
     cmd = [PLINK2, "--bfile", PANEL, "--clump", inp, "--clump-id-field", "SNP", "--clump-p-field", "P",
-           "--clump-p1", f"{P_MAX:g}", "--clump-p2", "1", "--clump-r2", f"{R2:g}", "--clump-kb", str(KB),
+           "--clump-p1", f"{p_max:g}", "--clump-p2", "1", "--clump-r2", f"{R2:g}", "--clump-kb", str(KB),
            "--threads", str(threads), "--memory", "8000", "--out", out]
     r = subprocess.run(cmd, env=env, capture_output=True, text=True)
     if r.returncode != 0:
@@ -114,29 +136,37 @@ def leads(rung, diseases, name, workdir, threads):
     if os.path.exists(out + ".clumps.missing_id"):
         raise RuntimeError(f"{rung}: plink2 could not find some SNPs in the panel ({out}.clumps.missing_id)")
     ids = pd.read_csv(out + ".clumps", sep="\t", usecols=["ID"], dtype={"ID": str})["ID"].to_numpy()
-    p_by_id = dict(zip(ss["SNP"], ss["P"]))
-    if len(set(ids)) != len(ids) or any(p_by_id[i] > P_MAX for i in ids):
-        raise RuntimeError(f"{rung}: plink2's leads are not distinct SNPs with p <= {P_MAX}")
-    return set(ids), {"snps_tested": int(n_tested), "snps_p_at_most_threshold": int((ss["P"] <= P_MAX).sum()),
-                      "lead_snps": int(len(ids))}, p_by_id
+    if len(set(ids)) != len(ids) or any(p_by_id[i] > p_max for i in ids):
+        raise RuntimeError(f"{rung}: plink2's leads are not distinct SNPs with p <= {p_max:g}")
+    return set(ids), {**counts, "lead_snps": int(len(ids))}, p_by_id
 
 
-def main(argv=None):
+def parser():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--threads", type=int, default=8)
     ap.add_argument("--work", default=f"{DATA}/classic_deepgp_work")
     ap.add_argument("--diseases", nargs="+", default=[DISEASE],
-                    help="the GWAS whose p <= 0.05 SNPs are kept (several: in any of them, clumped once on the smallest p)")
+                    help="the GWAS whose p <= --p_max SNPs are kept (several: in any of them, clumped once on the smallest p)")
     ap.add_argument("--rungs", nargs="+", default=list(SIZES), choices=list(SIZES), help="the training sizes to build")
     ap.add_argument("--name", default="classic_i10", help="dataset and store prefix: <name>_n<size>")
-    a = ap.parse_args(argv)
+    ap.add_argument("--p_max", type=float, default=P_MAX, help="the p-value threshold (the classic rule: 0.05)")
+    ap.add_argument("--no_clump", action="store_true", help="keep every SNP at or below --p_max, without clumping")
+    ap.add_argument("--source", default=MAIN,
+                    help="the store the genotypes are read from (one built here before, when the selection is a subset of it)")
+    return ap
+
+
+def main(argv=None):
+    a = parser().parse_args(argv)
+    clump = not a.no_clump
+    rule = selection_rule(a.p_max, clump)
     sizes = {r: SIZES[r] for r in a.rungs}
     sys.path.insert(0, REPO)
     from genostore import format as gf
     from genostore.store import GenoStore
 
     os.makedirs(a.work, mode=0o700, exist_ok=True)
-    main_store = GenoStore(MAIN)
+    main_store = GenoStore(a.source)
     chroms = [str(c) for c in main_store.chroms]
     variants = {c: main_store.variants(c) for c in chroms}
     row_of = {str(s): i for i, s in enumerate(main_store.samples)}
@@ -145,7 +175,7 @@ def main(argv=None):
     # ---- the SNPs and participants of each size
     plan, logs = {}, {}
     for rung, size in sizes.items():
-        lead_ids, counts, p_by_id = leads(rung, a.diseases, a.name, a.work, a.threads)
+        lead_ids, counts, p_by_id = leads(rung, a.diseases, a.name, a.work, a.threads, a.p_max, clump)
         sel, topped = {}, {}
         for c in chroms:
             ids_c = variants[c]["id"]
@@ -169,10 +199,10 @@ def main(argv=None):
             raise RuntimeError(f"{rung}: a participant is in two of the sample tables")
         plan[rung] = {"sel": sel, "rows": rows}
         logs[rung] = {**counts, "snps": int(sum(len(v) for v in sel.values())), "chromosomes_topped_up": topped,
-                      "diseases": a.diseases, "selection": f"p <= {P_MAX} in any disease's GWAS, clumped once on the smallest p",
+                      "diseases": a.diseases, "selection": rule,
                       "participants": {"train": len(train_ids), "val": len(val_ids), "test": len(test_ids)}}
-        log(f"{rung}: {counts['lead_snps']} lead SNPs with p <= {P_MAX} ({counts['snps_p_at_most_threshold']} SNPs with "
-            f"p <= {P_MAX} of {counts['snps_tested']}); {len(rows)} participants")
+        log(f"{rung}: {counts['lead_snps']} SNPs selected ({rule}; {counts['snps_p_at_most_threshold']} SNPs with "
+            f"p <= {a.p_max:g} of {counts['snps_tested']}); {len(rows)} participants")
 
     # ---- one pass over the main store, chromosome by chromosome
     union = np.unique(np.concatenate([p["rows"] for p in plan.values()]))
@@ -182,9 +212,9 @@ def main(argv=None):
             raise RuntimeError(f"{path} exists: move it aside before building again")
         ids_sorted = [str(main_store.samples[i]) for i in plan[r]["rows"]]
         gf.create_store(path, ids_sorted, gf.BLOCK_VARIANTS,
-                        {"selected_from": MAIN, "diseases": a.diseases, "gwas": f"{DATA}/pgi/gwas_sumstats/{r}",
-                         "selection": f"p <= {P_MAX} in any disease's GWAS, clumped once on the smallest p",
-                         "p_max": P_MAX, "clump_r2": R2, "clump_kb": KB, "ld_panel": PANEL})
+                        {"selected_from": a.source, "diseases": a.diseases, "gwas": f"{DATA}/pgi/gwas_sumstats/{r}",
+                         "selection": rule, "p_max": a.p_max, "clump_r2": R2 if clump else None,
+                         "clump_kb": KB if clump else None, "ld_panel": PANEL if clump else None})
     w = main_store.w
     for c in chroms:
         t0 = time.time()

@@ -2,6 +2,8 @@
 """Check a block partition against the genotype store and write partition.npz and partition.json.
 
     check_partition.py prive431 --from_reference REF.tsv             Prive's blocks: the reference table's block_id
+                                                                     (the table may list more variants than the store:
+                                                                     a store of selected SNPs takes its own rows)
     check_partition.py NAME --tsv BLOCKS.tsv --parent PARENT [--built JSON]   a TSV (CHROM ID block) nested in PARENT
     check_partition.py --csv OUT.csv NAME [NAME ...]                  the aggregate table of built partitions
 
@@ -36,14 +38,22 @@ def variant_digest(ids):
     return hashlib.sha256("\n".join(np.concatenate(ids)).encode()).hexdigest()
 
 
-def read_labels(path, column, store, ids):
-    """The label column of a TSV whose rows are the store's variants in store order; refused otherwise."""
+def read_labels(path, column, store, ids, subset=False):
+    """The label column of a TSV whose rows are the store's variants in store order; refused otherwise. With subset
+    (a reference table of a larger panel), the store's variants are looked up in it by CHROM and ID."""
     tab = np.atleast_1d(np.genfromtxt(path, delimiter="\t", names=True, dtype=None, encoding="utf-8",
                                       usecols=("CHROM", "ID", column)))
     want = np.concatenate([np.char.add(c + "\t", i) for c, i in zip(store.chroms, ids)])
+    keys = np.char.add(tab["CHROM"].astype(str), np.char.add("\t", tab["ID"].astype(str)))
+    if subset and len(tab) > len(want):
+        where = {k: i for i, k in enumerate(keys)}
+        missing = [k for k in want if k not in where]
+        if missing:
+            raise SystemExit(f"{path}: {len(missing)} of the store's variants are not in it (first: {missing[0].split(chr(9))[1]})")
+        tab, keys = tab[[where[k] for k in want]], want
     if len(tab) != len(want):
         raise SystemExit(f"{path}: {len(tab)} rows, but the store has {len(want)} variants")
-    bad = np.flatnonzero(np.char.add(tab["CHROM"].astype(str), np.char.add("\t", tab["ID"].astype(str))) != want)
+    bad = np.flatnonzero(keys != want)
     if len(bad):
         raise SystemExit(f"{path}: {len(bad)} rows are not the store's variant in store order (first at row {bad[0] + 1})")
     return tab[column]
@@ -132,7 +142,7 @@ def main(argv=None):
     var_ids = [store.variants(c)["id"].astype(str) for c in store.chroms]
     digest = variant_digest(var_ids)
     path, column = (a.from_reference, "block_id") if a.from_reference else (a.tsv, "block")
-    ids = block_ids(read_labels(path, column, store, var_ids), store)
+    ids = block_ids(read_labels(path, column, store, var_ids, subset=bool(a.from_reference)), store)
     if a.parent:
         check_nested(ids, os.path.join(a.partitions, a.parent, "partition.npz"), digest)
     built = {"source": path, "source_sha256": sha256(path), "column": column, "parent": a.parent}

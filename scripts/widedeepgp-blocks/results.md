@@ -230,3 +230,17 @@ pooled block tokens have unit RMS (entry RMS 0.273, 0.282, 0.297, 0.319 and 0.35
 18 November 21:57 to 22:08Z on GPU 2 (`runs/blocks/run_lin_rest.sh`, two to three minutes a rung, variance kept 0.75).
 The earlier single-copy, unscaled files are kept beside them as `init_ridge_d16_unscaled.pt` and are used by nothing.
 
+## Selected-SNP from-scratch arms (19 November 2026; methods.md section 12, item 19)
+
+Two single S3 trainings of the LD-block model from scratch on GWAS-selected SNPs (p < 0.01 in any of the 30 top-rung
+GWAS): `sel_p01anyct_S3_zero` on the 95,642 clumped leads, table from zero, and `sel_p01any_S3_pretrained` on the
+448,488 unclumped SNPs, table from one pass of masked-SNP pretraining. Un-handicapped table optimiser (κ 0.1, ε 1e-8,
+decay 0.01), no-mask recipe, mean readout, ten epoch-equivalents, seed 1. Yardsticks on the tuning set: covariates
+0.6627, classic-30 0.6627, full-set ridge PRS + covariates 0.6777, frozen stacked model 0.6735, and each set's own
+cross-fitted ridge PRS and twin (`results/p01any_n215872/`, `results/p01anyct_n215872/`). Rows are added as the chain
+(`chains/run_selected.sh`, `runs/selected/`) delivers them.
+
+| run | SNPs | start | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | best (at epoch-eq) | own ridge PRS + cov | own twin |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| sel_p01anyct_S3_zero | 95,642 | zero | | | | | | | | | | | | | |
+| sel_p01any_S3_pretrained | 448,488 | masked pretraining | | | | | | | | | | | | | |

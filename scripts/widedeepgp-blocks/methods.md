@@ -999,6 +999,51 @@ simplification, are:
    gradient sums over the 16 dimensions, learned per-locus shrinkage; a day's work), and which recipe and readout the
    grid runs.
 
+19. **The selected-SNP from-scratch arms (19 November 2026; plan agreed with Robert in the morning).** The question
+   is whether the per-SNP table learns anything by gradient descent on real data once the conditions of the synthetic
+   probe (item 1) are restored: far fewer SNPs, chosen by a linear step on the training labels; the table's optimiser
+   un-handicapped; a non-zero start where one is available. Every real run so far (items 14 to 18) had all 1,258,200
+   SNPs, the throttled optimiser of item 9 and a zero or ridge start, and the classic architecture on C+T SNPs (the
+   comparator's two top-rung runs) has no per-SNP parameters at all, so the question is open. Robert's design, after
+   discussion: GWAS selection is allowed as preprocessing; the LD blocks, the 16-wide dosage table and the S3 mixer
+   stay; no ridge initialisation. Haploblock inputs were considered and dropped: on chr22 the haplotype ridge carries
+   23% less signal than the SNP ridge (item 16's pre-test, 19 November), and chr22's haploblocks have a median of 12
+   common haplotypes per 14-SNP block, so they would not have reduced the table either.
+   - **SNP sets**, from the 30 top-rung REGENIE GWAS (PGI arm, N 215,872): each SNP's smallest p over the 30. (a)
+     `p01any`: p < 0.01 in any disease, not clumped: 448,488 SNPs (35.6% of the store; PRSformer's rule, p < 10⁻²
+     union over its 18 diseases, 137,245 variants at N 3.8 million, pruning tried and found harmful). (b) `p01anyct`:
+     the same, clumped once on the smallest p at r² 0.1 within 250 kb on the PGI LD panel, as the comparator's
+     datasets: 95,642 lead SNPs (measured before the build). For reference, p ≤ 0.05 in any disease keeps 82% of the
+     SNPs and 179,566 leads, p < 0.001 keeps 99,147 SNPs and 23,555 leads. Stores and datasets `<set>_n215872` from
+     the comparator's `build_datasets.py` (new options `--p_max`, `--no_clump`, `--source`; the clumped store is
+     built from the unclumped one, a subset). Privé partitions `prive_<set>` from the full reference table
+     (`check_partition.py --from_reference` now takes a store of selected SNPs); blocks with no selected SNP vanish.
+   - **Two arms**, one training each, seed 1, no search, from a frozen export of DeepWideGP `widening`
+     (`runs/selected/code_<commit>`): **A** `sel_p01anyct_S3_zero`, the clumped set, table from zero; **B**
+     `sel_p01any_S3_pretrained`, the unclumped set, the table, identity vectors and block MLP hidden layer started
+     from one pass of masked-SNP pretraining (`pretrain_blocks.py`, 15% of SNPs hidden, AdamW 1e-3, no labels; its
+     first run at scale) and then trained end to end. Pretraining is confined to the unclumped set on purpose: a
+     masked lead among leads at r² < 0.1 within 250 kb has next to nothing to be predicted from. The arms therefore
+     differ in two things at once; the run that separates them, the unclumped set from zero, is one command on the
+     same store and is queued for the next free GPU rather than run now (Robert, 19 November).
+   - **Settings.** S3 transformer (d 64, 4 layers, 4 heads), mean readout, the no-mask recipe of item 18 (input mask
+     0, dropout 0.2), lr 1e-4, weight decay 1e-3, batch 64, bf16, plateau schedule, plain cross-entropy at natural
+     prevalence, ten epoch-equivalents, validation every quarter. The table: κ 0.1 (step κ√B/√M: 1.2e-3 per entry per
+     step on 448,488 SNPs, 2.6e-3 on 95,642), Adam ε 1e-8 (the ordinary value, not item 9's throttle), decoupled
+     decay 0.01 (an e-fold in about 25 passes: nominal). Entries: 7.2 million and 1.5 million against 20 million.
+   - **Yardsticks**, all on the tuning set: covariates alone 0.6627; classic-30 0.6627 (no per-SNP parameters); the
+     cross-fitted block ridge PRS plus covariates and the logistic-ridge twin fitted on each set's own SNPs
+     (`build_block_ridge.py`, `fit_block_linear.py` on the new datasets; products under `<dataset>/blocks/`,
+     aggregates in `results/<set>_n215872/`); the full-set ridge PRS 0.6777 and the frozen stacked model 0.6735.
+     Reading: an arm at the floor means the table does not learn from real signal at this N under these conditions
+     either; an arm between the floor and its own ridge means it learns, and the gap to the ridge is the cost of
+     gradient descent; an arm at or above its ridge is the first end-to-end result worth a grid. The curve per
+     epoch-equivalent is reported, as always; a rise then a fall is the memorisation signature of item 18.
+   - **Chain** `chains/run_selected.sh` (detached; log `runs/selected/chain.log`): build (a) from the main store
+     (about three hours), partition, folds, block ridge (GPU), pretraining (GPU), arm B; build (b) from store (a),
+     partition, folds, block ridge, arm A; the two twins on the CPU; every step skipped by its product. GPU steps take
+     a GPU among 2 to 4 only when at least two are free. Results: `results.md`, "Selected-SNP from-scratch arms".
+
 ## References
 
 Kaplan J, McCandlish S, Henighan T, et al. Scaling laws for neural language models. arXiv
