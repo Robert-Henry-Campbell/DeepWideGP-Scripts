@@ -119,8 +119,10 @@ cross-fitted ridge PRS plus covariates 0.6777 (`results/hm3plus/blocks_linear.cs
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | frozen mean | frozen | mean | 0.4 / 0.5 | 0.6624 | 0.6704 | 0.6710 | 0.6715 | 0.6714 | 0.6715 | 0.6722 | 0.6700 | 0.6707 | 0.6708 | 0.6722 (7.0) | 10.0 budget | 0.7119 |
 | frozen mean, no mask | frozen | mean | 0 / 0.2 | 0.6665 | 0.6708 | 0.6714 | 0.6721 | 0.6724 | 0.6731 | 0.6725 | 0.6729 | 0.6733 | 0.6735 | 0.6735 (10.0) | 10.0 budget | 0.7148 |
+| frozen mean, no mask, seed 2 | frozen | mean | 0 / 0.2 | 0.6692 | 0.6705 | 0.6708 | 0.6716 | 0.6720 | 0.6727 | 0.6732 | 0.6728 | 0.6733 | 0.6734 | 0.6737 (8.3) | 10.0 budget | 0.7148 |
 | frozen atten | frozen | atten | 0.4 / 0.5 | 0.6615 | 0.6703 | 0.6709 | 0.6715 | 0.6718 | 0.6718 | 0.6723 | 0.6704 | 0.6719 | 0.6706 | 0.6723 (7.0) | 10.0 budget | 0.7122 |
 | frozen flat | frozen | flat | 0.4 / 0.5 | 0.6535 | 0.6710 | 0.6719 | 0.6721 | 0.6724 | 0.6727 | 0.6717 | 0.6724 | 0.6721 |  | 0.6728 (5.8) | 9.8 early | 0.7180 |
+| flat, no mask | frozen | flat | 0 / 0.2 | 0.6705 | 0.6726 | 0.6731 | 0.6717 | 0.6698 | 0.6679 | 0.6617 |  |  |  | 0.6731 (3.0) | 7.0 early | 0.7190 |
 | trained mean, κ 1e-2, ε 1e-8 | trained | mean | 0.4 / 0.5 | 0.6623 | 0.6703 | 0.6708 | 0.6703 | 0.6686 | 0.6664 | 0.6632 |  |  |  | 0.6708 (3.0) | 7.0 early | 0.7099 |
 
 The trained run's per-SNP table, compared with its warm start (RMS entry 0.350; root-mean-square change over all
@@ -174,8 +176,10 @@ Counts over the 30 diseases (a run beats a yardstick when its AUROC is higher):
 |---|---|---|---|---|---|
 | frozen mean | 0.6722 | 28 | 16 | 7 | -0.0019 |
 | frozen mean, no mask | 0.6735 | 30 | 17 | 12 | -0.0014 |
+| frozen mean, no mask, seed 2 | 0.6737 | 29 | 20 | 10 | -0.0011 |
 | frozen atten | 0.6724 | 28 | 17 | 10 | -0.0022 |
 | frozen flat | 0.6728 | 27 | 14 | 4 | -0.0040 |
+| flat, no mask | 0.6731 | 26 | 14 | 8 | -0.0038 |
 | trained mean, κ 1e-2, ε 1e-8 | 0.6708 | 26 | 12 | 4 | -0.0038 |
 
 The flat readout against the frozen mean: median difference +0.0001, higher for 16 of 30 diseases,
@@ -185,7 +189,15 @@ cross-entropy is worse (0.2576 against 0.2565). The no-mask recipe against the m
 higher for 24 of 30. The frozen mean's shortfall against the PRS is largest for the common diseases (-0.0052
 on average over the nine with at least 20,000 training cases). Attention and mean differ by at most 0.0003 at any validation.
 Seed replicates of the no-mask frozen mean run (seeds 2 and 3) and of the no-mask recipe with the flat readout (seeds 1
-and 2) started on 18 November at 21:55Z (`run_diag_seeds.sh`); their rows will be added here.
+and 2) started on 18 November at 21:55Z (`run_diag_seeds.sh`); the first of each finished on 19 November (rows above).
+Seed 2 of the frozen mean, no mask, reproduces seed 1: means 0.6737 against 0.6735, per-disease differences 0.0010 on
+average and 0.0040 at most (E66), median 0.0000, higher for 15 of 30; the mean of the two seeds is 0.6736 and beats the
+covariates for 29 diseases, the twin for 18 and the PRS for 13. The flat readout under the no-mask recipe overfits: it
+peaks at epoch-equivalent 3 (0.6731) and falls to 0.6617 by 7, where the early stop ends it, whereas under the masked
+recipe the same readout stayed between 0.6717 and 0.6728 from epoch-equivalent 2 to 9.8. At its best it is level with
+the frozen mean, no mask (median difference 0.0000, higher for 15 of 30; I10 +0.0042, E78 +0.0026) with a worse tuning
+cross-entropy (0.2578 against 0.2564). Seed 3 of the frozen mean and seed 2 of the flat run were still training; their
+rows follow when they finish.
 
 
 ## The linear comparators across the ladder, and the warm starts of every rung (18 November 2026)

@@ -980,7 +980,12 @@ simplification, are:
    puts noise of a token's own size on the training tokens that the clean tuning tokens never see. **Launched** to put
    seed spreads under these differences (`run_diag_seeds.sh`, GPUs 3 and 4, 21:55Z, about seven hours): seeds 2 and 3
    of the no-mask frozen mean run, and the untested combination of the no-mask recipe with the flat readout (seeds 1
-   and 2). **For Robert:** whether the ladder's deep arm is this frozen stacked model, or a first layer with far fewer
+   and 2). **First round (19 November, 00:55Z):** seed 2 of the frozen mean reproduces seed 1 (0.6737 against 0.6735;
+   per-disease differences 0.0010 on average, 0.0040 at most), so the seed spread of this configuration at the top
+   rung is about 0.0002 on the mean and its 0.0003 lead over the twin is noise. The flat readout under the no-mask
+   recipe overfits (0.6731 at epoch-equivalent 3, 0.6617 at 7, stopped early): the 829,000-weight head needs the
+   heavy masking, under which it reaches 0.6728. On this evidence the grid's readout is the mean and its recipe the
+   no-mask one; only the first layer is open. **For Robert:** whether the ladder's deep arm is this frozen stacked model, or a first layer with far fewer
    trainable parameters (one gain per SNP multiplying its ridge profile, started at one: 1.26 million numbers whose
    gradient sums over the 16 dimensions, learned per-locus shrinkage; a day's work), and which recipe and readout the
    grid runs.
