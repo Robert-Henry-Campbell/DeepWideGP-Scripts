@@ -1147,6 +1147,10 @@ simplification, are:
       of participants for the mean over the 30). Arm (a) is compared with the full-rung PGI, as the PGI arm reports it;
       arm (b) with the 107,743-rung PGI. `compare_pgi_tables.py`; chain `chains/run_pgi_tables.sh`; outputs in
       `runs/pgi_tables/`.
+    - **Outcome (20 November 2026; `results.md`):** no lift. Leak-free, the network is below its own PRS + covariates by
+      0.0055 (lassosum2) and 0.0071 (LDpred2-auto), 0 of 30 diseases significantly better and 10 to 11 worse; in-sample
+      by 0.0101 and 0.0112, peaking at the first validation (the leak). GPU 4 queued behind another session's jobs, at
+      Robert's word (`chains/run_pgi_tables.sh`).
 
 ## References
 

@@ -329,3 +329,32 @@ Reading.
 - **Still rising at the budget's end**, by about 0.0005 per epoch-equivalent over the last four; at that pace the gap to the
   linear read (0.020) would not close within a feasible budget. One seed; configuration (a)'s seed spread with covariates
   was 0.0002.
+
+## The network on frozen PGI tables (20 November 2026; methods.md section 12, item 22)
+
+Tuning set, 20,000 participants, mean over the 30 diseases. Each score (the network's logit; the PRS) is combined with
+the 12 covariates by the PGI arm's own logistic regression on the tuning set (`PGI/methods.md` section 6; the recomputed
+PRS AUROCs match the PGI arm's record to 5e-7). Lift = network minus PRS, 95% interval from a paired bootstrap (2,000;
+per disease stratified by case status, the mean from one shared resample of participants). Covariates alone: 0.6653.
+S3 network, frozen 30-channel table, first layer cached, no-mask recipe, 10 epoch-equivalents, seed 1, no search.
+Per-disease rows: `results/pgi_tables/compare.csv`.
+
+| Weights | Arm | Network trained on | PRS + covariates | Network + covariates | Lift | Diseases: lift / no clear difference / worse | Best at (epoch-eq) |
+|---|---|---|---|---|---|---|---|
+| lassosum2 | leak-free control | 108,129 | 0.6766 | 0.6711 | -0.0055 [-0.0068, -0.0042] | 0 / 20 / 10 | 9.26 |
+| LDpred2-auto | leak-free control | 108,129 | 0.6800 | 0.6729 | -0.0071 [-0.0085, -0.0057] | 0 / 19 / 11 | 10.01 |
+| lassosum2 | full rung, in-sample | 215,872 | 0.6829 | 0.6727 | -0.0101 [-0.0116, -0.0085] | 0 / 17 / 13 | 0.25 |
+| LDpred2-auto | full rung, in-sample | 215,872 | 0.6873 | 0.6760 | -0.0112 [-0.0130, -0.0096] | 0 / 15 / 15 | 0.5 |
+
+- **No lift anywhere.** The network on a frozen PGI table is below the PRS it was built from for both methods, by 0.006
+  to 0.007 without a leak; no disease shows a significant gain in any arm. The leak-free control runs had levelled
+  off: over their last two passes (8.26 to 10.01 epoch-equivalents) the raw mean moved by +0.0005 and +0.0003, within
+  the run-to-run noise, so a longer budget is unlikely to close a gap of 0.006 to 0.007.
+- **The leak costs about 0.004 more and shows its signature.** The full-rung tables give the PRS an AUROC of 0.887
+  (lassosum2) and 0.898 (LDpred2-auto) on 20,000 training participants against 0.572 and 0.582 on the tuning set; the
+  networks trained on them peaked at the first or second validation (0.6447 at 0.25, 0.6546 at 0.5 epoch-equivalents,
+  raw) and declined until early stopping. The control tables show no gap (0.550 / 0.556 and 0.562 / 0.564).
+- **Where the network loses** is where the ridge-table network lost (item 20): E03 (-0.038 and -0.043 in the controls),
+  K80, C44, E11. E03's PRS is concentrated in one block (HLA), which a mean over 431 equally weighted block tokens
+  dilutes; for the others the cause is open (block concentration explained E03 alone in item 20). Closest to a gain:
+  M54, N17, N18, I20, I95 (+0.002 to +0.004, every interval includes 0).

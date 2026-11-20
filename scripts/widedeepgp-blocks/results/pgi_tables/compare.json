@@ -1,0 +1,1142 @@
+[
+ {
+  "run": "top_lassosum2",
+  "method": "lassosum2",
+  "weights_from": "hm3plus",
+  "training_overlap": 215872,
+  "n_train": 215872,
+  "best_epoch_equiv": 0.25,
+  "curve": [
+   [
+    0.25,
+    0.6447
+   ],
+   [
+    0.5,
+    0.6399
+   ],
+   [
+    0.75,
+    0.6385
+   ],
+   [
+    1.0,
+    0.6356
+   ],
+   [
+    1.25,
+    0.6301
+   ],
+   [
+    1.5,
+    0.6259
+   ],
+   [
+    1.75,
+    0.6262
+   ],
+   [
+    2.0,
+    0.6241
+   ],
+   [
+    2.25,
+    0.6236
+   ],
+   [
+    2.5,
+    0.6226
+   ],
+   [
+    2.75,
+    0.6225
+   ],
+   [
+    3.0,
+    0.6232
+   ],
+   [
+    3.25,
+    0.6221
+   ],
+   [
+    3.5,
+    0.6209
+   ],
+   [
+    3.75,
+    0.6206
+   ],
+   [
+    4.0,
+    0.6217
+   ],
+   [
+    4.25,
+    0.6217
+   ],
+   [
+    4.5,
+    0.6215
+   ],
+   [
+    4.75,
+    0.6215
+   ]
+  ],
+  "leak_check": [
+   {
+    "trait": "I10",
+    "auroc_pgi_training_sample": 0.8285987436119767,
+    "auroc_pgi_tuning": 0.6041926967701939
+   },
+   {
+    "trait": "E78",
+    "auroc_pgi_training_sample": 0.8014623455859315,
+    "auroc_pgi_tuning": 0.5728956741341275
+   },
+   {
+    "trait": "K57",
+    "auroc_pgi_training_sample": 0.7812065060610711,
+    "auroc_pgi_tuning": 0.5884067806143978
+   },
+   {
+    "trait": "K21",
+    "auroc_pgi_training_sample": 0.9468561997868258,
+    "auroc_pgi_tuning": 0.5506833117395697
+   },
+   {
+    "trait": "K29",
+    "auroc_pgi_training_sample": 0.941266916400144,
+    "auroc_pgi_tuning": 0.5439363125122071
+   },
+   {
+    "trait": "K44",
+    "auroc_pgi_training_sample": 0.9734495718206165,
+    "auroc_pgi_tuning": 0.5595943864372853
+   },
+   {
+    "trait": "I25",
+    "auroc_pgi_training_sample": 0.8491955794102548,
+    "auroc_pgi_tuning": 0.5708409530453111
+   },
+   {
+    "trait": "M19",
+    "auroc_pgi_training_sample": 0.9813381718303263,
+    "auroc_pgi_tuning": 0.5410893642628917
+   },
+   {
+    "trait": "I84+K64",
+    "auroc_pgi_training_sample": 0.9809434063470198,
+    "auroc_pgi_tuning": 0.5386733681154938
+   },
+   {
+    "trait": "I48",
+    "auroc_pgi_training_sample": 0.7261365430478401,
+    "auroc_pgi_tuning": 0.6133165747065606
+   },
+   {
+    "trait": "M17",
+    "auroc_pgi_training_sample": 0.8240537319782454,
+    "auroc_pgi_tuning": 0.5677248355765511
+   },
+   {
+    "trait": "C44",
+    "auroc_pgi_training_sample": 0.6692738596996389,
+    "auroc_pgi_tuning": 0.6261131507695739
+   },
+   {
+    "trait": "E11",
+    "auroc_pgi_training_sample": 0.9014580129919851,
+    "auroc_pgi_tuning": 0.6297295397969549
+   },
+   {
+    "trait": "E66",
+    "auroc_pgi_training_sample": 0.9845977761618879,
+    "auroc_pgi_tuning": 0.600846354823047
+   },
+   {
+    "trait": "M54",
+    "auroc_pgi_training_sample": 0.992279368115134,
+    "auroc_pgi_tuning": 0.5463937117861125
+   },
+   {
+    "trait": "D12",
+    "auroc_pgi_training_sample": 0.7255883512551499,
+    "auroc_pgi_tuning": 0.5833059455658568
+   },
+   {
+    "trait": "I20",
+    "auroc_pgi_training_sample": 0.9859441738962629,
+    "auroc_pgi_tuning": 0.5726467067343383
+   },
+   {
+    "trait": "E03",
+    "auroc_pgi_training_sample": 0.7291220985195294,
+    "auroc_pgi_tuning": 0.6634636839491668
+   },
+   {
+    "trait": "K40",
+    "auroc_pgi_training_sample": 0.5956903751664246,
+    "auroc_pgi_tuning": 0.5855051068817325
+   },
+   {
+    "trait": "M16",
+    "auroc_pgi_training_sample": 0.9362295272809471,
+    "auroc_pgi_tuning": 0.566789144960435
+   },
+   {
+    "trait": "K80",
+    "auroc_pgi_training_sample": 0.6041431564127225,
+    "auroc_pgi_tuning": 0.5890033271315556
+   },
+   {
+    "trait": "N17",
+    "auroc_pgi_training_sample": 0.9960103542284101,
+    "auroc_pgi_tuning": 0.5359661331350268
+   },
+   {
+    "trait": "N18",
+    "auroc_pgi_training_sample": 0.9993233543417367,
+    "auroc_pgi_tuning": 0.5440867774529845
+   },
+   {
+    "trait": "J44",
+    "auroc_pgi_training_sample": 0.9989363168196341,
+    "auroc_pgi_tuning": 0.5551970780151105
+   },
+   {
+    "trait": "M23",
+    "auroc_pgi_training_sample": 0.999616415797717,
+    "auroc_pgi_tuning": 0.5373845536971595
+   },
+   {
+    "trait": "M47",
+    "auroc_pgi_training_sample": 0.9992148124749477,
+    "auroc_pgi_tuning": 0.5389439816590765
+   },
+   {
+    "trait": "I95",
+    "auroc_pgi_training_sample": 0.999794915621062,
+    "auroc_pgi_tuning": 0.5305122905745111
+   },
+   {
+    "trait": "I50",
+    "auroc_pgi_training_sample": 0.9981991141375453,
+    "auroc_pgi_tuning": 0.564611506496214
+   },
+   {
+    "trait": "M81",
+    "auroc_pgi_training_sample": 0.8555832133031543,
+    "auroc_pgi_tuning": 0.567113654438811
+   },
+   {
+    "trait": "I21",
+    "auroc_pgi_training_sample": 0.9989348982800709,
+    "auroc_pgi_tuning": 0.566814126579039
+   }
+  ],
+  "snps_kept": 1206688,
+  "blocks_empty": 0,
+  "wall_seconds": 655.5,
+  "check_max_abs_pgi_recorded": 4.879027539761438e-07
+ },
+ {
+  "run": "split_lassosum2",
+  "method": "lassosum2",
+  "weights_from": "hm3plus_n107743",
+  "training_overlap": 0,
+  "n_train": 108129,
+  "best_epoch_equiv": 9.26,
+  "curve": [
+   [
+    0.25,
+    0.646
+   ],
+   [
+    0.5,
+    0.6566
+   ],
+   [
+    0.75,
+    0.6586
+   ],
+   [
+    1.0,
+    0.6594
+   ],
+   [
+    1.25,
+    0.6602
+   ],
+   [
+    1.5,
+    0.6592
+   ],
+   [
+    1.75,
+    0.6606
+   ],
+   [
+    2.0,
+    0.661
+   ],
+   [
+    2.25,
+    0.6611
+   ],
+   [
+    2.5,
+    0.6607
+   ],
+   [
+    2.75,
+    0.6613
+   ],
+   [
+    3.0,
+    0.662
+   ],
+   [
+    3.25,
+    0.6618
+   ],
+   [
+    3.51,
+    0.662
+   ],
+   [
+    3.76,
+    0.6629
+   ],
+   [
+    4.01,
+    0.6637
+   ],
+   [
+    4.26,
+    0.6656
+   ],
+   [
+    4.51,
+    0.6659
+   ],
+   [
+    4.76,
+    0.6661
+   ],
+   [
+    5.01,
+    0.6662
+   ],
+   [
+    5.26,
+    0.6666
+   ],
+   [
+    5.51,
+    0.6663
+   ],
+   [
+    5.76,
+    0.6671
+   ],
+   [
+    6.01,
+    0.666
+   ],
+   [
+    6.26,
+    0.6671
+   ],
+   [
+    6.51,
+    0.6671
+   ],
+   [
+    6.76,
+    0.6668
+   ],
+   [
+    7.01,
+    0.6663
+   ],
+   [
+    7.26,
+    0.6671
+   ],
+   [
+    7.51,
+    0.667
+   ],
+   [
+    7.76,
+    0.6664
+   ],
+   [
+    8.01,
+    0.6674
+   ],
+   [
+    8.26,
+    0.6672
+   ],
+   [
+    8.51,
+    0.6671
+   ],
+   [
+    8.76,
+    0.6669
+   ],
+   [
+    9.01,
+    0.6676
+   ],
+   [
+    9.26,
+    0.6678
+   ],
+   [
+    9.51,
+    0.6668
+   ],
+   [
+    9.76,
+    0.6673
+   ],
+   [
+    10.01,
+    0.6677
+   ]
+  ],
+  "leak_check": [
+   {
+    "trait": "I10",
+    "auroc_pgi_training_sample": 0.5768614539565989,
+    "auroc_pgi_tuning": 0.5821704629748365
+   },
+   {
+    "trait": "E78",
+    "auroc_pgi_training_sample": 0.5687298177411124,
+    "auroc_pgi_tuning": 0.5585883104467135
+   },
+   {
+    "trait": "K57",
+    "auroc_pgi_training_sample": 0.5471887191177319,
+    "auroc_pgi_tuning": 0.5609472560275391
+   },
+   {
+    "trait": "K21",
+    "auroc_pgi_training_sample": 0.5351850958366527,
+    "auroc_pgi_tuning": 0.5432117529633478
+   },
+   {
+    "trait": "K29",
+    "auroc_pgi_training_sample": 0.5188267751822748,
+    "auroc_pgi_tuning": 0.5336891149071744
+   },
+   {
+    "trait": "K44",
+    "auroc_pgi_training_sample": 0.5300197731283927,
+    "auroc_pgi_tuning": 0.540321369041645
+   },
+   {
+    "trait": "I25",
+    "auroc_pgi_training_sample": 0.5596422367991658,
+    "auroc_pgi_tuning": 0.5454567990357084
+   },
+   {
+    "trait": "M19",
+    "auroc_pgi_training_sample": 0.5463307756183767,
+    "auroc_pgi_tuning": 0.5323453122512681
+   },
+   {
+    "trait": "I84+K64",
+    "auroc_pgi_training_sample": 0.5189261617066493,
+    "auroc_pgi_tuning": 0.5284278099502026
+   },
+   {
+    "trait": "I48",
+    "auroc_pgi_training_sample": 0.5913412087866187,
+    "auroc_pgi_tuning": 0.595252212432745
+   },
+   {
+    "trait": "M17",
+    "auroc_pgi_training_sample": 0.5348606468674627,
+    "auroc_pgi_tuning": 0.5462490765816213
+   },
+   {
+    "trait": "C44",
+    "auroc_pgi_training_sample": 0.6177328416555838,
+    "auroc_pgi_tuning": 0.6044041709582852
+   },
+   {
+    "trait": "E11",
+    "auroc_pgi_training_sample": 0.5944107527444914,
+    "auroc_pgi_tuning": 0.5988275695322861
+   },
+   {
+    "trait": "E66",
+    "auroc_pgi_training_sample": 0.557510172869937,
+    "auroc_pgi_tuning": 0.5741695608586885
+   },
+   {
+    "trait": "M54",
+    "auroc_pgi_training_sample": 0.5162764274881266,
+    "auroc_pgi_tuning": 0.5327088004770482
+   },
+   {
+    "trait": "D12",
+    "auroc_pgi_training_sample": 0.5492186685216605,
+    "auroc_pgi_tuning": 0.5600279712859847
+   },
+   {
+    "trait": "I20",
+    "auroc_pgi_training_sample": 0.5512477927011986,
+    "auroc_pgi_tuning": 0.5529265445994199
+   },
+   {
+    "trait": "E03",
+    "auroc_pgi_training_sample": 0.6203377462689096,
+    "auroc_pgi_tuning": 0.634934947750188
+   },
+   {
+    "trait": "K40",
+    "auroc_pgi_training_sample": 0.5708866136100497,
+    "auroc_pgi_tuning": 0.5679816654573868
+   },
+   {
+    "trait": "M16",
+    "auroc_pgi_training_sample": 0.5481935330527802,
+    "auroc_pgi_tuning": 0.537407897222747
+   },
+   {
+    "trait": "K80",
+    "auroc_pgi_training_sample": 0.58980607885345,
+    "auroc_pgi_tuning": 0.5863596606663093
+   },
+   {
+    "trait": "N17",
+    "auroc_pgi_training_sample": 0.5033900686274329,
+    "auroc_pgi_tuning": 0.5227486988751566
+   },
+   {
+    "trait": "N18",
+    "auroc_pgi_training_sample": 0.5101508815411927,
+    "auroc_pgi_tuning": 0.5392223174201234
+   },
+   {
+    "trait": "J44",
+    "auroc_pgi_training_sample": 0.5539626793122562,
+    "auroc_pgi_tuning": 0.5418165242179831
+   },
+   {
+    "trait": "M23",
+    "auroc_pgi_training_sample": 0.5229402496938562,
+    "auroc_pgi_tuning": 0.5359053230002417
+   },
+   {
+    "trait": "M47",
+    "auroc_pgi_training_sample": 0.5420246469034288,
+    "auroc_pgi_tuning": 0.5337373767469284
+   },
+   {
+    "trait": "I95",
+    "auroc_pgi_training_sample": 0.5183292887238955,
+    "auroc_pgi_tuning": 0.524867740160371
+   },
+   {
+    "trait": "I50",
+    "auroc_pgi_training_sample": 0.5245108020267658,
+    "auroc_pgi_tuning": 0.555726483095398
+   },
+   {
+    "trait": "M81",
+    "auroc_pgi_training_sample": 0.5424994893218853,
+    "auroc_pgi_tuning": 0.5488461825231136
+   },
+   {
+    "trait": "I21",
+    "auroc_pgi_training_sample": 0.550366044590071,
+    "auroc_pgi_tuning": 0.5559974337283449
+   }
+  ],
+  "snps_kept": 1221520,
+  "blocks_empty": 0,
+  "wall_seconds": 1174.5,
+  "check_max_abs_pgi_recorded": 4.932069235241698e-07
+ },
+ {
+  "run": "top_ldpred2_auto",
+  "method": "ldpred2_auto",
+  "weights_from": "hm3plus",
+  "training_overlap": 215872,
+  "n_train": 215872,
+  "best_epoch_equiv": 0.5,
+  "curve": [
+   [
+    0.25,
+    0.6539
+   ],
+   [
+    0.5,
+    0.6546
+   ],
+   [
+    0.75,
+    0.6492
+   ],
+   [
+    1.0,
+    0.6493
+   ],
+   [
+    1.25,
+    0.6462
+   ],
+   [
+    1.5,
+    0.644
+   ],
+   [
+    1.75,
+    0.646
+   ],
+   [
+    2.0,
+    0.6454
+   ],
+   [
+    2.25,
+    0.6416
+   ],
+   [
+    2.5,
+    0.6438
+   ],
+   [
+    2.75,
+    0.6399
+   ],
+   [
+    3.0,
+    0.6425
+   ],
+   [
+    3.25,
+    0.6358
+   ],
+   [
+    3.5,
+    0.6357
+   ],
+   [
+    3.75,
+    0.6361
+   ],
+   [
+    4.0,
+    0.6359
+   ],
+   [
+    4.25,
+    0.6352
+   ],
+   [
+    4.5,
+    0.6359
+   ],
+   [
+    4.75,
+    0.636
+   ],
+   [
+    5.0,
+    0.635
+   ]
+  ],
+  "leak_check": [
+   {
+    "trait": "I10",
+    "auroc_pgi_training_sample": 0.8090500288340172,
+    "auroc_pgi_tuning": 0.6153571896938616
+   },
+   {
+    "trait": "E78",
+    "auroc_pgi_training_sample": 0.8224548409485809,
+    "auroc_pgi_tuning": 0.5863652332193826
+   },
+   {
+    "trait": "K57",
+    "auroc_pgi_training_sample": 0.8457059587744873,
+    "auroc_pgi_tuning": 0.601528575062492
+   },
+   {
+    "trait": "K21",
+    "auroc_pgi_training_sample": 0.898237368847464,
+    "auroc_pgi_tuning": 0.5574913472122829
+   },
+   {
+    "trait": "K29",
+    "auroc_pgi_training_sample": 0.8814670440690899,
+    "auroc_pgi_tuning": 0.5509331807448279
+   },
+   {
+    "trait": "K44",
+    "auroc_pgi_training_sample": 0.8781002954508598,
+    "auroc_pgi_tuning": 0.572206898225222
+   },
+   {
+    "trait": "I25",
+    "auroc_pgi_training_sample": 0.8613261310493489,
+    "auroc_pgi_tuning": 0.5837279109931326
+   },
+   {
+    "trait": "M19",
+    "auroc_pgi_training_sample": 0.912243718406024,
+    "auroc_pgi_tuning": 0.5516328036868531
+   },
+   {
+    "trait": "I84+K64",
+    "auroc_pgi_training_sample": 0.85879306066022,
+    "auroc_pgi_tuning": 0.544417301610068
+   },
+   {
+    "trait": "I48",
+    "auroc_pgi_training_sample": 0.8204347943824778,
+    "auroc_pgi_tuning": 0.6214290567800569
+   },
+   {
+    "trait": "M17",
+    "auroc_pgi_training_sample": 0.9152706296164017,
+    "auroc_pgi_tuning": 0.5806858748549205
+   },
+   {
+    "trait": "C44",
+    "auroc_pgi_training_sample": 0.8215239245572502,
+    "auroc_pgi_tuning": 0.6351278290167075
+   },
+   {
+    "trait": "E11",
+    "auroc_pgi_training_sample": 0.9143310759963647,
+    "auroc_pgi_tuning": 0.6507035333763073
+   },
+   {
+    "trait": "E66",
+    "auroc_pgi_training_sample": 0.9297210011386504,
+    "auroc_pgi_tuning": 0.6127573997144018
+   },
+   {
+    "trait": "M54",
+    "auroc_pgi_training_sample": 0.943895843657406,
+    "auroc_pgi_tuning": 0.5605213221749803
+   },
+   {
+    "trait": "D12",
+    "auroc_pgi_training_sample": 0.8517526547264421,
+    "auroc_pgi_tuning": 0.5925359059047182
+   },
+   {
+    "trait": "I20",
+    "auroc_pgi_training_sample": 0.915177058500039,
+    "auroc_pgi_tuning": 0.5838308502429161
+   },
+   {
+    "trait": "E03",
+    "auroc_pgi_training_sample": 0.8854722019360022,
+    "auroc_pgi_tuning": 0.6740784123605889
+   },
+   {
+    "trait": "K40",
+    "auroc_pgi_training_sample": 0.8567880095748727,
+    "auroc_pgi_tuning": 0.5947317259213781
+   },
+   {
+    "trait": "M16",
+    "auroc_pgi_training_sample": 0.9196677121302027,
+    "auroc_pgi_tuning": 0.589330003439767
+   },
+   {
+    "trait": "K80",
+    "auroc_pgi_training_sample": 0.859937572951666,
+    "auroc_pgi_tuning": 0.6028533009544826
+   },
+   {
+    "trait": "N17",
+    "auroc_pgi_training_sample": 0.9515551096530934,
+    "auroc_pgi_tuning": 0.5399607580297576
+   },
+   {
+    "trait": "N18",
+    "auroc_pgi_training_sample": 0.9404630055147061,
+    "auroc_pgi_tuning": 0.557644975438144
+   },
+   {
+    "trait": "J44",
+    "auroc_pgi_training_sample": 0.9651654352884146,
+    "auroc_pgi_tuning": 0.571139691880713
+   },
+   {
+    "trait": "M23",
+    "auroc_pgi_training_sample": 0.9184600724038802,
+    "auroc_pgi_tuning": 0.5406545330539984
+   },
+   {
+    "trait": "M47",
+    "auroc_pgi_training_sample": 0.9637876183619005,
+    "auroc_pgi_tuning": 0.536435355438699
+   },
+   {
+    "trait": "I95",
+    "auroc_pgi_training_sample": 0.9754848038762735,
+    "auroc_pgi_tuning": 0.531125762022126
+   },
+   {
+    "trait": "I50",
+    "auroc_pgi_training_sample": 0.9633023325806654,
+    "auroc_pgi_tuning": 0.5731122150646804
+   },
+   {
+    "trait": "M81",
+    "auroc_pgi_training_sample": 0.9346927635683095,
+    "auroc_pgi_tuning": 0.5706811064718164
+   },
+   {
+    "trait": "I21",
+    "auroc_pgi_training_sample": 0.9375263443247487,
+    "auroc_pgi_tuning": 0.5825375521607155
+   }
+  ],
+  "snps_kept": 1258200,
+  "blocks_empty": 0,
+  "wall_seconds": 1047.4,
+  "check_max_abs_pgi_recorded": 4.94992321797838e-07
+ },
+ {
+  "run": "split_ldpred2_auto",
+  "method": "ldpred2_auto",
+  "weights_from": "hm3plus_n107743",
+  "training_overlap": 0,
+  "n_train": 108129,
+  "best_epoch_equiv": 10.01,
+  "curve": [
+   [
+    0.25,
+    0.6469
+   ],
+   [
+    0.5,
+    0.6568
+   ],
+   [
+    0.75,
+    0.6586
+   ],
+   [
+    1.0,
+    0.6595
+   ],
+   [
+    1.25,
+    0.6603
+   ],
+   [
+    1.5,
+    0.6594
+   ],
+   [
+    1.75,
+    0.6607
+   ],
+   [
+    2.0,
+    0.6612
+   ],
+   [
+    2.25,
+    0.6617
+   ],
+   [
+    2.5,
+    0.6617
+   ],
+   [
+    2.75,
+    0.6634
+   ],
+   [
+    3.0,
+    0.6674
+   ],
+   [
+    3.25,
+    0.6679
+   ],
+   [
+    3.51,
+    0.6681
+   ],
+   [
+    3.76,
+    0.6685
+   ],
+   [
+    4.01,
+    0.6685
+   ],
+   [
+    4.26,
+    0.6686
+   ],
+   [
+    4.51,
+    0.6684
+   ],
+   [
+    4.76,
+    0.6685
+   ],
+   [
+    5.01,
+    0.6685
+   ],
+   [
+    5.26,
+    0.6689
+   ],
+   [
+    5.51,
+    0.6686
+   ],
+   [
+    5.76,
+    0.669
+   ],
+   [
+    6.01,
+    0.668
+   ],
+   [
+    6.26,
+    0.6694
+   ],
+   [
+    6.51,
+    0.6692
+   ],
+   [
+    6.76,
+    0.6695
+   ],
+   [
+    7.01,
+    0.6693
+   ],
+   [
+    7.26,
+    0.6693
+   ],
+   [
+    7.51,
+    0.6695
+   ],
+   [
+    7.76,
+    0.6685
+   ],
+   [
+    8.01,
+    0.6696
+   ],
+   [
+    8.26,
+    0.6694
+   ],
+   [
+    8.51,
+    0.6692
+   ],
+   [
+    8.76,
+    0.6695
+   ],
+   [
+    9.01,
+    0.6697
+   ],
+   [
+    9.26,
+    0.6695
+   ],
+   [
+    9.51,
+    0.6697
+   ],
+   [
+    9.76,
+    0.669
+   ],
+   [
+    10.01,
+    0.6697
+   ]
+  ],
+  "leak_check": [
+   {
+    "trait": "I10",
+    "auroc_pgi_training_sample": 0.5936135465841799,
+    "auroc_pgi_tuning": 0.5955686174959633
+   },
+   {
+    "trait": "E78",
+    "auroc_pgi_training_sample": 0.5832773925333351,
+    "auroc_pgi_tuning": 0.5716947574908379
+   },
+   {
+    "trait": "K57",
+    "auroc_pgi_training_sample": 0.571673350528598,
+    "auroc_pgi_tuning": 0.5807109314911549
+   },
+   {
+    "trait": "K21",
+    "auroc_pgi_training_sample": 0.5316921814564157,
+    "auroc_pgi_tuning": 0.548812740218282
+   },
+   {
+    "trait": "K29",
+    "auroc_pgi_training_sample": 0.5256065960023695,
+    "auroc_pgi_tuning": 0.5391623370030447
+   },
+   {
+    "trait": "K44",
+    "auroc_pgi_training_sample": 0.545223457063777,
+    "auroc_pgi_tuning": 0.5483357627616268
+   },
+   {
+    "trait": "I25",
+    "auroc_pgi_training_sample": 0.5801464889589771,
+    "auroc_pgi_tuning": 0.5632722935325158
+   },
+   {
+    "trait": "M19",
+    "auroc_pgi_training_sample": 0.5462869629605149,
+    "auroc_pgi_tuning": 0.5335306791929475
+   },
+   {
+    "trait": "I84+K64",
+    "auroc_pgi_training_sample": 0.5262017554180974,
+    "auroc_pgi_tuning": 0.5395927659345052
+   },
+   {
+    "trait": "I48",
+    "auroc_pgi_training_sample": 0.59353462634106,
+    "auroc_pgi_tuning": 0.6053917369842965
+   },
+   {
+    "trait": "M17",
+    "auroc_pgi_training_sample": 0.5574353492708397,
+    "auroc_pgi_tuning": 0.5539478487507891
+   },
+   {
+    "trait": "C44",
+    "auroc_pgi_training_sample": 0.6170490603044103,
+    "auroc_pgi_tuning": 0.613167375988505
+   },
+   {
+    "trait": "E11",
+    "auroc_pgi_training_sample": 0.6216418977593046,
+    "auroc_pgi_tuning": 0.6217611012318938
+   },
+   {
+    "trait": "E66",
+    "auroc_pgi_training_sample": 0.5778200165129834,
+    "auroc_pgi_tuning": 0.5867809761101854
+   },
+   {
+    "trait": "M54",
+    "auroc_pgi_training_sample": 0.5201158813623994,
+    "auroc_pgi_tuning": 0.5453418368805624
+   },
+   {
+    "trait": "D12",
+    "auroc_pgi_training_sample": 0.5585867817380819,
+    "auroc_pgi_tuning": 0.5737002472644351
+   },
+   {
+    "trait": "I20",
+    "auroc_pgi_training_sample": 0.5834421348380596,
+    "auroc_pgi_tuning": 0.5621145866831252
+   },
+   {
+    "trait": "E03",
+    "auroc_pgi_training_sample": 0.634900391319815,
+    "auroc_pgi_tuning": 0.6464853133008802
+   },
+   {
+    "trait": "K40",
+    "auroc_pgi_training_sample": 0.5752466858657641,
+    "auroc_pgi_tuning": 0.569413638816022
+   },
+   {
+    "trait": "M16",
+    "auroc_pgi_training_sample": 0.5682286069964114,
+    "auroc_pgi_tuning": 0.5532488666666284
+   },
+   {
+    "trait": "K80",
+    "auroc_pgi_training_sample": 0.601361106030549,
+    "auroc_pgi_tuning": 0.5963837837438388
+   },
+   {
+    "trait": "N17",
+    "auroc_pgi_training_sample": 0.5136766171641449,
+    "auroc_pgi_tuning": 0.5242088615619689
+   },
+   {
+    "trait": "N18",
+    "auroc_pgi_training_sample": 0.5305616130324452,
+    "auroc_pgi_tuning": 0.5474804586630798
+   },
+   {
+    "trait": "J44",
+    "auroc_pgi_training_sample": 0.5685833454396384,
+    "auroc_pgi_tuning": 0.5519879021564339
+   },
+   {
+    "trait": "M23",
+    "auroc_pgi_training_sample": 0.5249446966069344,
+    "auroc_pgi_tuning": 0.5358884760896174
+   },
+   {
+    "trait": "M47",
+    "auroc_pgi_training_sample": 0.5413193449040964,
+    "auroc_pgi_tuning": 0.5304537644453948
+   },
+   {
+    "trait": "I95",
+    "auroc_pgi_training_sample": 0.5061932387756225,
+    "auroc_pgi_tuning": 0.5146920343303777
+   },
+   {
+    "trait": "I50",
+    "auroc_pgi_training_sample": 0.5391158757548004,
+    "auroc_pgi_tuning": 0.5501785059796109
+   },
+   {
+    "trait": "M81",
+    "auroc_pgi_training_sample": 0.5543360196100395,
+    "auroc_pgi_tuning": 0.5482887836763097
+   },
+   {
+    "trait": "I21",
+    "auroc_pgi_training_sample": 0.5815046053081245,
+    "auroc_pgi_tuning": 0.5675759040598276
+   }
+  ],
+  "snps_kept": 1258200,
+  "blocks_empty": 0,
+  "wall_seconds": 1136.4,
+  "check_max_abs_pgi_recorded": 4.6332554970440754e-07
+ }
+]
