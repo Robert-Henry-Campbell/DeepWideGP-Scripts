@@ -1,0 +1,178 @@
+2026-11-20T00:05:08Z scheduler started, pid 4143608
+2026-11-20T00:05:08Z 010_rot10: started on GPU 3 (slots 1), pid 4143609
+2026-11-20T00:05:08Z 011_budget20: started on GPU 4 (slots 1), pid 4143610
+2026-11-20T00:05:08Z 012_budget50: started on GPU 3 (slots 1), pid 4143611
+2026-11-20T00:07:08Z 020_e11_build: started on GPU cpu (slots 0), pid 4144846
+2026-11-20T00:19:08Z 030_labelnorm_rot: started on GPU 4 (slots 1), pid 4155318
+2026-11-20T00:19:08Z 031_perdisease_rot: started on GPU 3 (slots 1), pid 4155319
+2026-11-20T00:19:08Z 032_covskip_rot: started on GPU 4 (slots 1), pid 4155321
+2026-11-20T00:26:29Z stop file seen; the scheduler exits (running jobs continue)
+2026-11-20T00:26:34Z scheduler started, pid 4159350
+2026-11-20T00:26:34Z 010_rot10: adopted (pid 4143609, GPU 3, slots 1)
+2026-11-20T00:26:34Z 011_budget20: adopted (pid 4143610, GPU 4, slots 1)
+2026-11-20T00:26:34Z 012_budget50: adopted (pid 4143611, GPU 3, slots 1)
+2026-11-20T00:26:34Z 020_e11_build: in running/ without a pid file; moved to failed/
+2026-11-20T00:26:34Z 030_labelnorm_rot: adopted (pid 4155318, GPU 4, slots 1)
+2026-11-20T00:26:34Z 031_perdisease_rot: adopted (pid 4155319, GPU 3, slots 1)
+2026-11-20T00:26:34Z 032_covskip_rot: adopted (pid 4155321, GPU 4, slots 1)
+2026-11-20T00:26:34Z 021_e11_classic: not run, a job it waits for failed
+2026-11-20T00:26:34Z 025_yardstick_pgi: started on GPU 3 (slots 1), pid 4159352
+2026-11-20T00:26:34Z 033_labelnorm_shuf: started on GPU 4 (slots 1), pid 4159353
+2026-11-20T00:27:14Z stop file seen; the scheduler exits (running jobs continue)
+2026-11-20T00:27:28Z scheduler started, pid 4160455
+2026-11-20T00:27:28Z 010_rot10: adopted (pid 4143609, GPU 3, slots 1)
+2026-11-20T00:27:28Z 011_budget20: adopted (pid 4143610, GPU 4, slots 1)
+2026-11-20T00:27:28Z 012_budget50: adopted (pid 4143611, GPU 3, slots 1)
+2026-11-20T00:27:28Z 020_e11_build: adopted (pid 4144846, GPU cpu, slots 0)
+2026-11-20T00:27:28Z 025_yardstick_pgi: adopted (pid 4159352, GPU 3, slots 1)
+2026-11-20T00:27:28Z 030_labelnorm_rot: adopted (pid 4155318, GPU 4, slots 1)
+2026-11-20T00:27:28Z 031_perdisease_rot: adopted (pid 4155319, GPU 3, slots 1)
+2026-11-20T00:27:28Z 032_covskip_rot: adopted (pid 4155321, GPU 4, slots 1)
+2026-11-20T00:27:28Z 033_labelnorm_shuf: adopted (pid 4159353, GPU 4, slots 1)
+2026-11-20T00:31:22Z GPU 4 draining and GPU 2 kept free at the request of the session 'caching table runs' (its chain needs two free GPUs and takes the highest); GPU 2 opens once its job runs
+2026-11-20T00:32:28Z 010_rot10: exit 0 on GPU 3
+2026-11-20T00:32:28Z 040_search_paper_w0: started on GPU 3 (slots 1), pid 4164584
+2026-11-20T00:32:29Z decision: searches run with the shuffled sampler; rot10 (rotation, item 3) trailed budget20/50 by ~0.0015 at 9 epoch-equivalents
+2026-11-20T00:33:28Z 025_yardstick_pgi: exit 0 on GPU 3
+2026-11-20T00:33:28Z 040_search_paper_w1: started on GPU 3 (slots 1), pid 4166045
+2026-11-20T00:35:08Z 080_warm_d32: started on GPU cpu (slots 0), pid 4167017
+2026-11-20T00:35:08Z 082_warm_d4: started on GPU cpu (slots 0), pid 4167019
+2026-11-20T00:37:08Z 080_warm_d32: exit 0 on GPU cpu
+2026-11-20T00:37:08Z 082_warm_d4: exit 0 on GPU cpu
+2026-11-20T00:43:05Z GPU 2 opened (4 slots) at the other session's word: its chain now uses GPU 4 alone, starting after budget20; GPU 4 stays closed until it says it is done
+2026-11-20T00:43:05Z the leaky-table jobs 070-075 withdrawn: the other agent's top_lassosum2 run peaked at its first validation (0.6447) and fell to 0.62, the leak signature; items 2 and 6 will run on its leak-free tables (dataset hm3plus_c107743) instead
+2026-11-20T00:43:09Z 040_search_paper_w2: started on GPU 2 (slots 1), pid 4171447
+2026-11-20T00:43:09Z 040_search_paper_w3: started on GPU 2 (slots 1), pid 4171448
+2026-11-20T00:43:09Z 050_search_opt256_w0: started on GPU 2 (slots 1), pid 4171451
+2026-11-20T00:43:09Z 050_search_opt256_w1: started on GPU 2 (slots 1), pid 4171454
+2026-11-20T00:43:09Z 069_wait_leakfree_tables: started on GPU cpu (slots 0), pid 4171461
+2026-11-20T00:44:29Z 096_warm_d64: started on GPU cpu (slots 0), pid 4172294
+2026-11-20T00:45:49Z 098_e11_build_r01: started on GPU cpu (slots 0), pid 4173116
+2026-11-20T00:46:09Z 096_warm_d64: exit 0 on GPU cpu
+2026-11-20T00:51:49Z 032_covskip_rot: exit 0 on GPU 4
+2026-11-20T00:52:30Z 069_wait_leakfree_tables: exit -15 on GPU cpu
+2026-11-20T00:52:30Z 069_wait_leakfree_log: started on GPU cpu (slots 0), pid 4178656
+2026-11-20T00:53:10Z 031_perdisease_rot: exit 0 on GPU 3
+2026-11-20T00:53:10Z 050_search_opt256_w2: started on GPU 3 (slots 1), pid 4179039
+2026-11-20T00:58:10Z 030_labelnorm_rot: exit 0 on GPU 4
+2026-11-20T01:03:31Z 012_budget50: exit 0 on GPU 3
+2026-11-20T01:03:31Z 033_labelnorm_shuf: exit 0 on GPU 4
+2026-11-20T01:03:31Z 050_search_opt256_w3: started on GPU 3 (slots 1), pid 4186343
+2026-11-20T01:04:11Z GPUs 2 and 3 raised to 5 slots (GPU utilisation and CPU load allow it; the searches hold 8 slots for ~2 h, so singles would otherwise wait)
+2026-11-20T01:04:11Z 060_atten_rot: started on GPU 2 (slots 1), pid 4186690
+2026-11-20T01:04:11Z 061_s4_rot: started on GPU 3 (slots 1), pid 4186692
+2026-11-20T01:09:51Z 011_budget20: exit 0 on GPU 4
+2026-11-20T01:34:33Z 069_wait_leakfree_log: exit 0 on GPU cpu
+2026-11-20T01:37:13Z 050_search_opt256_w3: exit 0 on GPU 3
+2026-11-20T01:37:13Z 062_budget20_cosine: started on GPU 3 (slots 1), pid 14802
+2026-11-20T01:40:34Z 020_e11_build: exit 0 on GPU cpu
+2026-11-20T01:42:14Z 050_search_opt256_w0: exit 0 on GPU 2
+2026-11-20T01:46:34Z 050_search_opt256_w2: exit 0 on GPU 3
+2026-11-20T01:46:34Z 063_perdisease_shuf: started on GPU 3 (slots 1), pid 19224
+2026-11-20T01:49:14Z 060_atten_rot: exit 0 on GPU 2
+2026-11-20T01:53:15Z 061_s4_rot: exit 0 on GPU 3
+2026-11-20T01:53:15Z 064_covskip_shuf: started on GPU 3 (slots 1), pid 25008
+2026-11-20T01:57:35Z 050_search_opt256_w1: exit 0 on GPU 2
+2026-11-20T01:57:35Z 021_e11_classic: started on GPU 2 (slots 3), pid 28047
+2026-11-20T01:59:35Z 098_e11_build_r01: exit 0 on GPU cpu
+2026-11-20T02:04:08Z 099_e11_classic_r01 renamed 022_e11_classic_r01: next in line after the first E11 run (Robert)
+2026-11-20T02:13:56Z 040_search_paper_w2: exit 0 on GPU 2
+2026-11-20T02:14:28Z GPU 2 raised to 6 slots so the E11 control run (3 slots) can start there beside the first E11 run once the last paper-search worker on GPU 2 ends, instead of holding slots idle
+2026-11-20T02:16:56Z 040_search_paper_w1: exit 0 on GPU 3
+2026-11-20T02:16:56Z 051_search_opt256_summary: started on GPU 3 (slots 1), pid 43077
+2026-11-20T02:17:16Z 040_search_paper_w3: exit 0 on GPU 2
+2026-11-20T02:17:16Z 051_search_opt256_summary: exit 0 on GPU 3
+2026-11-20T02:17:16Z 022_e11_classic_r01: started on GPU 2 (slots 3), pid 43283
+2026-11-20T02:17:16Z 070_pgi_lasso_frozen_c107: started on GPU 3 (slots 1), pid 43285
+2026-11-20T02:20:37Z 040_search_paper_w0: exit 0 on GPU 3
+2026-11-20T02:20:37Z 063_perdisease_shuf: exit 0 on GPU 3
+2026-11-20T02:20:37Z 041_search_paper_summary: started on GPU 3 (slots 1), pid 47260
+2026-11-20T02:20:37Z 071_blockattn_lasso_c107: started on GPU 3 (slots 1), pid 47261
+2026-11-20T02:20:57Z 041_search_paper_summary: exit 0 on GPU 3
+2026-11-20T02:20:57Z 072_blockmamba_lasso_c107: started on GPU 3 (slots 1), pid 47486
+2026-11-20T02:22:37Z 064_covskip_shuf: exit 0 on GPU 3
+2026-11-20T02:22:37Z 073_pgi_ldpred_frozen_c107: started on GPU 3 (slots 1), pid 48632
+2026-11-20T02:23:37Z 071_blockattn_lasso_c107: exit 0 on GPU 3
+2026-11-20T02:23:37Z 074_blockattn_ldpred_c107: started on GPU 3 (slots 1), pid 49282
+2026-11-20T02:24:57Z 072_blockmamba_lasso_c107: exit 0 on GPU 3
+2026-11-20T02:24:57Z 075_yardstick_c107: started on GPU 3 (slots 1), pid 50221
+2026-11-20T02:25:57Z 075_yardstick_c107: exit 0 on GPU 3
+2026-11-20T02:25:57Z 076_blockattn_ridge: started on GPU 3 (slots 1), pid 50932
+2026-11-20T02:26:37Z 074_blockattn_ldpred_c107: exit 0 on GPU 3
+2026-11-20T02:26:37Z 077_blockmamba_ridge: started on GPU 3 (slots 1), pid 51505
+2026-11-20T02:27:22Z 071/072/074/076 re-queued as 071r/072r/074r/076r from code_87810a4 (attention kernel limit and Mamba memory fixed); the first attempts' exit lines say exit 1 although the wrapper reported 0 (job scripts now propagate the status)
+2026-11-20T02:27:56Z 077 stopped (old code) and re-queued as 077r
+2026-11-20T02:27:57Z 077_blockmamba_ridge: exit -15 on GPU 3
+2026-11-20T02:27:57Z 071r_blockattn_lasso_c107: started on GPU 3 (slots 1), pid 52433
+2026-11-20T02:32:17Z 076_blockattn_ridge: exit 1 on GPU 3
+2026-11-20T02:32:17Z 072r_blockmamba_lasso_c107: started on GPU 3 (slots 1), pid 55392
+2026-11-20T02:34:57Z 070_pgi_lasso_frozen_c107: exit 0 on GPU 3
+2026-11-20T02:34:57Z 074r_blockattn_ldpred_c107: started on GPU 3 (slots 1), pid 60429
+2026-11-20T02:35:13Z GPU 4 reopened (5 slots): the other session's chain finished its GPU work at 01:52Z
+2026-11-20T02:35:17Z 076r_blockattn_ridge: started on GPU 4 (slots 1), pid 60742
+2026-11-20T02:35:17Z 077r_blockmamba_ridge: started on GPU 4 (slots 1), pid 60743
+2026-11-20T02:35:17Z 078_blockattn_ridge_k64: started on GPU 4 (slots 1), pid 60744
+2026-11-20T02:35:17Z 081_table_d32: started on GPU 4 (slots 1), pid 60747
+2026-11-20T02:35:17Z 083_table_d4: started on GPU 4 (slots 1), pid 60751
+2026-11-20T02:40:38Z 062_budget20_cosine: exit 0 on GPU 3
+2026-11-20T02:40:38Z 085_combo_paper20: started on GPU 3 (slots 1), pid 65599
+2026-11-20T02:43:38Z 073_pgi_ldpred_frozen_c107: exit 0 on GPU 3
+2026-11-20T02:43:38Z 086_combo_opt256_20: started on GPU 3 (slots 1), pid 68430
+2026-11-20T02:59:19Z 021_e11_classic: exit 0 on GPU 2
+2026-11-20T02:59:19Z 087_combo_labelnorm20: started on GPU 2 (slots 1), pid 85627
+2026-11-20T02:59:19Z 088_combo_all20: started on GPU 2 (slots 1), pid 85628
+2026-11-20T02:59:19Z 090_size_s1: started on GPU 2 (slots 1), pid 85630
+2026-11-20T03:09:00Z 022_e11_classic_r01: exit 0 on GPU 2
+2026-11-20T03:09:00Z 091_size_s2: started on GPU 2 (slots 1), pid 93734
+2026-11-20T03:09:00Z 092_size_s5: started on GPU 2 (slots 1), pid 93736
+2026-11-20T03:09:00Z 093_mamba_s3: started on GPU 2 (slots 1), pid 93738
+2026-11-20T03:24:00Z 071r_blockattn_lasso_c107: exit 0 on GPU 3
+2026-11-20T03:24:00Z 084_table_d32_20: started on GPU 3 (slots 1), pid 104909
+2026-11-20T03:24:41Z 083_table_d4: exit 1 on GPU 4
+2026-11-20T03:24:41Z 084b_table_d32_opt256_20: started on GPU 4 (slots 1), pid 105423
+2026-11-20T03:25:12Z GPU 4 capped at 4 slots: table_d4's streamed re-score ran out of GPU memory beside four other jobs (its training finished: 0.6729)
+2026-11-20T03:25:54Z items 2 and 6 re-queued on the full-rung in-sample lassosum2 and LDpred2 tables with their frozen controls (Robert: report the proposed method as specified; the half-rung-weights runs stay as a secondary analysis)
+2026-11-20T03:27:41Z 086_combo_opt256_20: exit 0 on GPU 3
+2026-11-20T03:27:41Z 070_pgi_lasso_frozen: started on GPU 3 (slots 1), pid 107761
+2026-11-20T03:31:21Z 074r_blockattn_ldpred_c107: exit 0 on GPU 3
+2026-11-20T03:31:21Z 071_blockattn_lasso: started on GPU 3 (slots 1), pid 110087
+2026-11-20T03:42:22Z 076r_blockattn_ridge: exit 0 on GPU 4
+2026-11-20T03:44:22Z 090_size_s1: exit 0 on GPU 2
+2026-11-20T03:44:22Z 072_blockmamba_lasso: started on GPU 2 (slots 1), pid 222002
+2026-11-20T03:47:02Z 092_size_s5: exit 0 on GPU 2
+2026-11-20T03:47:02Z 073_pgi_ldpred_frozen: started on GPU 2 (slots 1), pid 245737
+2026-11-20T03:48:42Z 070_pgi_lasso_frozen: exit 0 on GPU 3
+2026-11-20T03:48:42Z 074_blockattn_ldpred: started on GPU 3 (slots 1), pid 262487
+2026-11-20T03:56:42Z 091_size_s2: exit 0 on GPU 2
+2026-11-20T03:56:42Z 083s_score_d4: started on GPU 2 (slots 1), pid 334136
+2026-11-20T03:58:02Z 083s_score_d4: exit 0 on GPU 2
+2026-11-20T03:58:03Z 084c_table_d32_pdh20: started on GPU 2 (slots 1), pid 346405
+2026-11-20T04:08:03Z 093_mamba_s3: exit 0 on GPU 2
+2026-11-20T04:08:03Z 095_ensemble_seeds: started on GPU 2 (slots 1), pid 445025
+2026-11-20T04:08:23Z 095_ensemble_seeds: exit 1 on GPU 2
+2026-11-20T04:08:23Z 097_table_d64: started on GPU 2 (slots 1), pid 447520
+2026-11-20T04:09:03Z 081_table_d32: exit 0 on GPU 4
+2026-11-20T04:11:10Z 095 re-queued as 095r from code_3acd1b7 (older checkpoints load again)
+2026-11-20T04:11:23Z 095r_ensemble_seeds: started on GPU 4 (slots 1), pid 474757
+2026-11-20T04:14:03Z 095r_ensemble_seeds: exit 0 on GPU 4
+2026-11-20T04:18:24Z 071_blockattn_lasso: exit 0 on GPU 3
+2026-11-20T04:19:24Z 087_combo_labelnorm20: exit 0 on GPU 2
+2026-11-20T04:19:44Z 073_pgi_ldpred_frozen: exit 0 on GPU 2
+2026-11-20T04:23:24Z 072r_blockmamba_lasso_c107: exit 0 on GPU 3
+2026-11-20T04:34:45Z 085_combo_paper20: exit 0 on GPU 3
+2026-11-20T04:38:05Z 074_blockattn_ldpred: exit 0 on GPU 3
+2026-11-20T04:44:25Z 072_blockmamba_lasso: exit 0 on GPU 2
+2026-11-20T04:45:05Z 088_combo_all20: exit 0 on GPU 2
+2026-11-20T04:48:05Z 077r_blockmamba_ridge: exit 0 on GPU 4
+2026-11-20T04:50:46Z 078_blockattn_ridge_k64: exit 0 on GPU 4
+2026-11-20T04:52:46Z 084b_table_d32_opt256_20: exit 0 on GPU 4
+2026-11-20T04:53:35Z first-layer cache files of finished runs removed (about 160 GB; /mnt/sdg was at 98%); kept: the 16-, 32- and 64-wide ridge caches still in use
+2026-11-20T05:15:07Z 084_table_d32_20: exit 0 on GPU 3
+2026-11-20T05:30:08Z 097_table_d64: exit 0 on GPU 2
+2026-11-20T05:31:48Z confirm_seed jobs: among runs within 0.0002 of the best they take the larger-batch one (table_d32_20 0.67555 and table_d32_opt256_20 0.67551 are a tie; the batch-256 run trains in 45 min instead of 110)
+2026-11-20T05:34:28Z 084c_table_d32_pdh20: exit 0 on GPU 2
+2026-11-20T05:34:28Z 089_confirm_seed2: started on GPU 2 (slots 1), pid 553818
+2026-11-20T05:34:28Z 089_confirm_seed3: started on GPU 3 (slots 1), pid 553819
+2026-11-20T06:12:10Z 089_confirm_seed2: exit 0 on GPU 2
+2026-11-20T06:14:50Z 089_confirm_seed3: exit 0 on GPU 3
+2026-11-20T06:15:36Z queue finished: every job done; scheduler asked to stop, watchdog stopped

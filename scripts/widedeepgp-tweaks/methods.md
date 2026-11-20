@@ -69,6 +69,16 @@ start; the masked-pretraining ablation trains the table, so it cannot be cached 
 30-disease classic model at the paper's clumping would hold about a million SNPs. The E0 simulated-trait gate was set
 aside by Robert on 17 November ("only real diseases").
 
+Added during the night as results came in: `perdisease_shuf`, `covskip_shuf` and `labelnorm_shuf` (items 7 and 8 and
+the covariate skip on the base sampler once the rotation proved worse); `budget20_cosine` (the doubled budget with a
+cosine schedule); the follow-ups of the 32-wide table, `table_d32_20` (doubled budget), `table_d32_opt256_20` (the
+batch-256 optimiser settings) and `table_d32_pdh20` (with the per-disease head); `blockattn_ridge_k64` (64 SNPs, two
+layers); the combinations `combo_paper20`, `combo_opt256_20`, `combo_paper20_labelnorm` and `combo_all20` (the search
+winners with the doubled budget, with and without the entropy loss and the per-disease head); `yardstick_c107` and
+`ensemble_seeds`; and `confirm_seed2`/`confirm_seed3`, which retrain the best combination or follow-up with seeds 2 and 3
+(the project rule of 17 November: the chosen configuration is reported as the mean of three seeds with the spread; every
+other run keeps seed 1).
+
 Own ideas: `covskip_rot` (`--cov_skip logistic`: a linear map from the covariates straight to the logits, started at
 the covariates-only logistic model with the head's output map at zero, so the network begins at the covariate floor
 and learns only what the covariates leave; Robert's "over-reliance on covariates" concern of 18 November);
@@ -102,6 +112,15 @@ buys); the attention readout retried.
   scaling and device, owner-only under `data/.../blocks/cache/`, and later runs load them (10 to 20 s) instead of
   streaming 1.26 million dosages a participant (2 minutes and a pass over the store per run). The test set is never
   cached. A cached run equals the streamed run to 1e-6 (tests), and every run's best snapshot is re-scored by streaming.
+
+- **Fixes made while the queue ran.** The within-block module's first top-rung runs failed: the fused attention kernels
+  refuse more than 65,535 sequences times heads at once (64 participants x 431 blocks x 4 heads), and the bi-Mamba
+  kernels' intermediates ran a shared GPU out of memory; the block sequences now go through the mixer in pieces of
+  8,192, recomputed in the backward pass for the Mamba variant. The loss's normalisation buffer is derived from the
+  counts and not saved, so checkpoints from before the night load (the seed ensemble had failed on the missing key).
+  Job scripts first reported exit 0 whatever happened inside; they now propagate the status, and the first attempts'
+  failures are in their logs. The on-disk first-layer caches grew to about 200 GB and /mnt/sdg reached 98% at 04:55 UTC
+  (the PRSformer session noticed); the caches of finished runs were removed, keeping the three still in use.
 
 ## 5. Software
 

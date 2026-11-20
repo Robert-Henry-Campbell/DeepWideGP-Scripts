@@ -60,12 +60,12 @@ train_pgi() {   # train_pgi NAME METHOD [flags...]: a run on the frozen PGI tabl
         $CACHE_FLAGS "$@" $resume) || return $?
 }
 
-# ---- the leak-free PGI tables (the other agent's chain): dataset hm3plus_c107743 (the 108,129 training participants outside the
-# 107,743 rung) with tables built from that rung's PGI weights, so no participant's inputs carry their own label
+# ---- the PGI tables whose weights were fitted on other participants (the other agent's chain): dataset hm3plus_c107743 (the 108,129 training participants outside the
+# 107,743 rung) with tables built from that rung's PGI weights, so the weights were fitted on none of the participants they are applied to
 C107=hm3plus_c107743
 C107_BLOCKS=$DS/ard30/$C107/blocks
 C107_FLAGS="--rd_mode $C107 --first_layer_cache $C107_BLOCKS/cache"
-train_c107() {   # train_c107 NAME METHOD [flags...]: a run on the leak-free frozen PGI table of METHOD on the c107743 dataset, cached
+train_c107() {   # train_c107 NAME METHOD [flags...]: a run on the frozen half-rung-weight PGI table of METHOD on the c107743 dataset, cached
     local name=$1 method=$2; shift 2
     local resume=""
     [ -e "$RUNS/$name/results.json" ] && { echo "$name: results.json exists, nothing to train"; return 0; }

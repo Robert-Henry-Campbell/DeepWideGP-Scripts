@@ -1,0 +1,13 @@
+{
+ "init": "/mnt/sdg/robert/deepwidegp/data/datasets/ard30/hm3plus/blocks/init_pgi_lassosum2_d30.pt",
+ "method": "lassosum2",
+ "n_train": 215872,
+ "n_val": 20000,
+ "mean_pgi_alone_auroc": 0.5718696553884326,
+ "mean_pgi_alone_auroc_training_rows": 0.8872862976147737,
+ "mean_combined_auroc": 0.6340591371068822,
+ "mean_covariates_auroc": 0.6627292119155032,
+ "mean_gain": -0.028670074808620948,
+ "cache_file": "/mnt/sdg/robert/deepwidegp/data/datasets/ard30/hm3plus/blocks/cache/first_layer_244dc641ce1ba41c1195f79b.pt",
+ "seconds": 188.1
+}

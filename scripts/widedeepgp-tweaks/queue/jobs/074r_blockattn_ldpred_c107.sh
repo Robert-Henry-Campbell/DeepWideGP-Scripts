@@ -1,5 +1,5 @@
 # slots: 1
 source /mnt/sdg/robert/deepwidegp/runs/tweaks/queue/common.sh
-# Item 2 on the leak-free LDpred2-auto table, rerun from the fixed code.
+# Item 2 on the LDpred2-auto table with weights from the other half of the rung, rerun from the fixed code.
 train_c107 blockattn_ldpred_c107 ldpred2_auto --block_attn 32 --block_attn_dim 32 --block_attn_layers 1 --block_attn_heads 4 --block_attn_mixer transformer && score $CODE3 blockattn_ldpred_c107
 rc=$?; echo "exit $rc at $(stamp)"; exit $rc

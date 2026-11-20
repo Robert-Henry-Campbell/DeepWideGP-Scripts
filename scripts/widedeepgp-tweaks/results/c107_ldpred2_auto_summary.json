@@ -1,0 +1,14 @@
+{
+ "init": "/mnt/sdg/robert/deepwidegp/data/datasets/ard30/hm3plus_c107743/blocks/init_pgi_ldpred2_auto_d30.pt",
+ "dataset": "hm3plus_c107743",
+ "method": "ldpred2_auto",
+ "n_train": 108129,
+ "n_val": 20000,
+ "mean_pgi_alone_auroc": 0.5639688892744973,
+ "mean_pgi_alone_auroc_training_rows": 0.5633330671767075,
+ "mean_combined_auroc": 0.6771547403060348,
+ "mean_covariates_auroc": 0.6623755592376583,
+ "mean_gain": 0.014779181068376394,
+ "cache_file": "/mnt/sdg/robert/deepwidegp/data/datasets/ard30/hm3plus_c107743/blocks/cache/first_layer_6c194533174a9843ab9014fd.pt",
+ "seconds": 19.1
+}

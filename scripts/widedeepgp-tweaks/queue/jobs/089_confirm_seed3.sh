@@ -7,7 +7,10 @@ best=$($PY - <<'PYEOF'
 import json, os
 root = "/mnt/sdg/robert/deepwidegp/runs/tweaks"
 runs = {r: json.load(open(f"{root}/{r}/results.json"))["best_val_auroc_mean"] for r in ("combo_paper20", "combo_opt256_20", "combo_paper20_labelnorm", "combo_all20", "table_d32_20", "table_d32_opt256_20", "table_d32_pdh20") if os.path.exists(f"{root}/{r}/results.json")}
-print(max(runs, key=runs.get))
+top = max(runs.values())
+near = [r for r, v in runs.items() if v > top - 0.0002]          # runs within noise of the best: the cheapest of them (batch 256 first)
+cfg = {r: json.load(open(f"{root}/{r}/config.json"))["args"]["batch_size"] for r in near}
+print(max(near, key=lambda r: (cfg[r], runs[r])))
 PYEOF
 ) || exit 1
 echo "best combination: $best"

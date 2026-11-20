@@ -1,5 +1,5 @@
 # slots: 0
-# Waits (up to 4 h) for the other agent's leak-free tables: its chain log records "table_split_lassosum2: exit 0" and
+# Waits (up to 4 h) for the other agent's half-rung-weight tables: its chain log records "table_split_lassosum2: exit 0" and
 # "table_split_ldpred2_auto: exit 0" once each table is closed (the files are written in place, so their existence is not enough).
 source /mnt/sdg/robert/deepwidegp/runs/tweaks/queue/common.sh
 LOG=$ROOT/runs/pgi_tables/chain.log
