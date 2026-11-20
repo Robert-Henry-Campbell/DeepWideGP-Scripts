@@ -52,7 +52,8 @@ def test_threshold_only_selection_keeps_every_snp_with_a_finite_p_at_or_below_p_
     assert bd.threshold_ids(ss, 0.01) == {"rs1", "rs4"}                      # at the threshold counts, just above not
     assert bd.threshold_ids(ss, 1.0) == {"rs1", "rs2", "rs4", "rs5"}         # never a SNP without a p
     assert bd.selection_rule(0.01, False) == "p <= 0.01 in any disease's GWAS, not clumped"
-    assert bd.selection_rule(0.05, True) == "p <= 0.05 in any disease's GWAS, clumped once on the smallest p"
+    assert bd.selection_rule(0.05, True) == "p <= 0.05 in any disease's GWAS, clumped once on the smallest p (r2 0.1, 250 kb)"
+    assert bd.selection_rule(0.05, True, 0.7, 500) == "p <= 0.05 in any disease's GWAS, clumped once on the smallest p (r2 0.7, 500 kb)"
 
 
 def test_the_parser_defaults_to_the_classic_rule_from_the_main_store():

@@ -99,11 +99,11 @@ def threshold_ids(ss, p_max):
     return set(ss["SNP"].to_numpy()[np.isfinite(p) & (p <= p_max)])
 
 
-def selection_rule(p_max, clump):
-    return f"p <= {p_max:g} in any disease's GWAS, " + ("clumped once on the smallest p" if clump else "not clumped")
+def selection_rule(p_max, clump, r2=R2, kb=KB):
+    return f"p <= {p_max:g} in any disease's GWAS, " + (f"clumped once on the smallest p (r2 {r2:g}, {kb} kb)" if clump else "not clumped")
 
 
-def leads(rung, diseases, name, workdir, threads, p_max=P_MAX, clump=True):
+def leads(rung, diseases, name, workdir, threads, p_max=P_MAX, clump=True, r2=R2, kb=KB):
     """The selected SNPs of one training size, from each SNP's smallest p over the diseases' GWAS (one disease:
     that GWAS). Clumped: plink2's leads on the LD panel; with --clump-p1 p_max and --clump-p2 1 they are the leads
     that the greedy clumping of all SNPs gives (as the PGI arm's C+T), kept where p <= p_max. Not clumped: every
@@ -128,7 +128,7 @@ def leads(rung, diseases, name, workdir, threads, p_max=P_MAX, clump=True):
     out = os.path.join(workdir, f"{rung}_{name}")
     env = dict(os.environ, OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1", MKL_NUM_THREADS="1")
     cmd = [PLINK2, "--bfile", PANEL, "--clump", inp, "--clump-id-field", "SNP", "--clump-p-field", "P",
-           "--clump-p1", f"{p_max:g}", "--clump-p2", "1", "--clump-r2", f"{R2:g}", "--clump-kb", str(KB),
+           "--clump-p1", f"{p_max:g}", "--clump-p2", "1", "--clump-r2", f"{r2:g}", "--clump-kb", str(kb),
            "--threads", str(threads), "--memory", "8000", "--out", out]
     r = subprocess.run(cmd, env=env, capture_output=True, text=True)
     if r.returncode != 0:
@@ -151,6 +151,8 @@ def parser():
     ap.add_argument("--name", default="classic_i10", help="dataset and store prefix: <name>_n<size>")
     ap.add_argument("--p_max", type=float, default=P_MAX, help="the p-value threshold (the classic rule: 0.05)")
     ap.add_argument("--no_clump", action="store_true", help="keep every SNP at or below --p_max, without clumping")
+    ap.add_argument("--r2", type=float, default=R2, help="clumping r2 (the classic rule 0.1; the published paper 0.7)")
+    ap.add_argument("--kb", type=int, default=KB, help="clumping window in kb (the classic rule 250; the published paper 500)")
     ap.add_argument("--source", default=MAIN,
                     help="the store the genotypes are read from (one built here before, when the selection is a subset of it)")
     return ap
@@ -159,7 +161,7 @@ def parser():
 def main(argv=None):
     a = parser().parse_args(argv)
     clump = not a.no_clump
-    rule = selection_rule(a.p_max, clump)
+    rule = selection_rule(a.p_max, clump, a.r2, a.kb)
     sizes = {r: SIZES[r] for r in a.rungs}
     sys.path.insert(0, REPO)
     from genostore import format as gf
@@ -175,7 +177,7 @@ def main(argv=None):
     # ---- the SNPs and participants of each size
     plan, logs = {}, {}
     for rung, size in sizes.items():
-        lead_ids, counts, p_by_id = leads(rung, a.diseases, a.name, a.work, a.threads, a.p_max, clump)
+        lead_ids, counts, p_by_id = leads(rung, a.diseases, a.name, a.work, a.threads, a.p_max, clump, a.r2, a.kb)
         sel, topped = {}, {}
         for c in chroms:
             ids_c = variants[c]["id"]
@@ -213,8 +215,8 @@ def main(argv=None):
         ids_sorted = [str(main_store.samples[i]) for i in plan[r]["rows"]]
         gf.create_store(path, ids_sorted, gf.BLOCK_VARIANTS,
                         {"selected_from": a.source, "diseases": a.diseases, "gwas": f"{DATA}/pgi/gwas_sumstats/{r}",
-                         "selection": rule, "p_max": a.p_max, "clump_r2": R2 if clump else None,
-                         "clump_kb": KB if clump else None, "ld_panel": PANEL if clump else None})
+                         "selection": rule, "p_max": a.p_max, "clump_r2": a.r2 if clump else None,
+                         "clump_kb": a.kb if clump else None, "ld_panel": PANEL if clump else None})
     w = main_store.w
     for c in chroms:
         t0 = time.time()
