@@ -355,6 +355,8 @@ Per-disease rows: `results/pgi_tables/compare.csv`.
   networks trained on them peaked at the first or second validation (0.6447 at 0.25, 0.6546 at 0.5 epoch-equivalents,
   raw) and declined until early stopping. The control tables show no gap (0.550 / 0.556 and 0.562 / 0.564).
 - **Where the network loses** is where the ridge-table network lost (item 20): E03 (-0.038 and -0.043 in the controls),
-  K80, C44, E11. E03's PRS is concentrated in one block (HLA), which a mean over 431 equally weighted block tokens
-  dilutes; for the others the cause is open (block concentration explained E03 alone in item 20). Closest to a gain:
+  K80, C44, E11. These runs used the mean readout, but the network can already weight blocks (four layers of
+  self-attention across the block tokens), and on the ridge table the per-disease attention readout did not help them
+  either (E03 0.6854 against 0.6862 with the mean; item 18), while the flat readout partly did (E03 0.6921, E11 0.6985).
+  Why these diseases lose is open (block concentration explained E03 alone in item 20). Closest to a gain:
   M54, N17, N18, I20, I95 (+0.002 to +0.004, every interval includes 0).
