@@ -3,8 +3,10 @@
 # recipe) on a 30-channel table of lassosum2 or LDpred2-auto weights (one channel per disease) instead of the ridge, with
 # the first layer cached. Full rung as asked (weights from the GWAS of all 215,872, so in-sample for every training
 # participant) and a leak-free control (weights of the 107,743 rung; the network trains on the other 108,129). One branch
-# per method; each step takes the highest free GPU among 2-4 that the other branch has not claimed, once at least two such
-# are free. Steps are skipped when their product exists; a failed step stops its branch. Then the lift over each PGI.
+# per method. Every step runs on GPU 4, queued behind the jobs already there: it starts once nothing but this chain runs on
+# GPU 4, and the two branches share it (Robert, 20 Nov: the GPUs stay busy for a long time, so queue rather than wait for
+# two free GPUs; the session running the tweaks queue leaves GPU 4 to this chain). Steps are skipped when their product
+# exists; a failed step stops its branch. Then the lift over each PGI.
 #   cd /mnt/sdg/robert/deepwidegp/runs/pgi_tables && setsid -f nohup bash run_pgi_tables.sh > /dev/null 2>&1 < /dev/null
 set -u
 ROOT=/mnt/sdg/robert/deepwidegp
@@ -25,33 +27,24 @@ if [ ! -d "$CODE" ]; then
         || { say "FAILED: export of DeepWideGP $H"; exit 1; }
 fi
 export PYTHONPATH=$CODE
-rm -f "$OUT"/.claim_*                               # claims of an earlier launch
+GPU=4
+SID=$(ps -o sid= -p $$ | tr -d ' ')
 say "starting from code_$H, pid $$"
 
-free_gpus() {   # the indices among 2, 3 and 4 with no compute process
-    local busy; busy=$(nvidia-smi --query-compute-apps=gpu_uuid --format=csv,noheader 2>/dev/null)
-    nvidia-smi --query-gpu=index,uuid --format=csv,noheader 2>/dev/null | tr -d ' ' | while IFS=, read -r idx uuid; do
-        case "$idx" in 2|3|4) grep -q "$uuid" <<< "$busy" || echo "$idx";; esac
+gpu_ours() {    # true when every compute process on GPU $GPU belongs to this chain's session
+    local uuid pid
+    uuid=$(nvidia-smi --query-gpu=index,uuid --format=csv,noheader 2>/dev/null | tr -d ' ' | awk -F, -v g="$GPU" '$1==g{print $2}')
+    [ -n "$uuid" ] || return 1
+    for pid in $(nvidia-smi --query-compute-apps=pid,gpu_uuid --format=csv,noheader 2>/dev/null | tr -d ' ' | awk -F, -v u="$uuid" '$2==u{print $1}'); do
+        [ "$(ps -o sid= -p "$pid" 2>/dev/null | tr -d ' ')" = "$SID" ] || return 1
     done
 }
-take_gpu() {    # prints the highest free GPU among 2-4 that no step has claimed, once at least two such are free
-    local f g
-    while :; do
-        exec 9> "$OUT/.gpu.lock"; flock 9
-        f=()
-        for g in $(free_gpus); do [ -e "$OUT/.claim_$g" ] || f+=("$g"); done
-        if [ ${#f[@]} -ge 2 ]; then
-            g=${f[-1]}; touch "$OUT/.claim_$g"; flock -u 9; exec 9>&-; echo "$g"; return
-        fi
-        flock -u 9; exec 9>&-
-        sleep 120
-    done
-}
-step() {        # name command...: one logged step on a GPU of its own; its exit status is returned
-    local name=$1 gpu rc; shift
-    gpu=$(take_gpu); say "$name: starting on GPU $gpu"
-    (cd "$CODE" && CUDA_VISIBLE_DEVICES=$gpu OMP_NUM_THREADS=10 MKL_NUM_THREADS=10 "$@") >> "$OUT/logs/$name.log" 2>&1
-    rc=$?; rm -f "$OUT/.claim_$gpu"; say "$name: exit $rc"; return $rc
+step() {        # name command...: one logged step on GPU $GPU, once nothing but this chain runs there; its exit status is returned
+    local name=$1 rc; shift
+    until gpu_ours; do sleep 120; done
+    say "$name: starting on GPU $GPU"
+    (cd "$CODE" && CUDA_VISIBLE_DEVICES=$GPU OMP_NUM_THREADS=10 MKL_NUM_THREADS=10 "$@") >> "$OUT/logs/$name.log" 2>&1
+    rc=$?; say "$name: exit $rc"; return $rc
 }
 train() {       # name dataset init
     local resume=""
