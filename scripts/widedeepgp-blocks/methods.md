@@ -1121,6 +1121,33 @@ simplification, are:
     learning rate checked again) is Robert's decision. Chains already running use frozen code copies and are unaffected;
     a frozen-table run launched from d05e545 on is cached. Masked and trained-table runs still stream.
 
+22. **The network on a frozen PGI table (20 November 2026; Robert's request).** The ridge table is replaced by the PGI
+    arm's chosen weights of lassosum2 or LDpred2-auto, one channel per disease (embed_dim 30, so the linear signal is
+    not compressed): a SNP's row holds its 30 per-ALT-allele weights times the training SD the model standardises with,
+    so a block's pooled vector is that block's part of each disease's PGI (centred, over the square root of the block's
+    SNPs), and the 431 block vectors add back up to the PGI (checked against the PGI arm's own tuning scores: correlation
+    at least 0.9999 for every disease). Dosage only: the ridge table never had dominance terms (its 90 columns were 30
+    diseases times 3 penalties). lassosum2's SNPs with no weight for any disease are dropped: their rows are zero and each
+    block is divided by the square root of its kept SNPs, the same model as one built on the kept SNPs alone (a genotype
+    store of those SNPs would take hours to build and save nothing once the first layer is cached). Each channel is scaled
+    to unit RMS over training participants (lesson 1 of item 14). Frozen and unmasked, so the first layer is cached (item
+    21); everything else is the frozen no-mask recipe (S3, mean readout, dropout 0.2, lr 1e-4, batch 64, 10
+    epoch-equivalents, seed 1, no search). `make_pgi_table.py`, tests in `test_pgi_table.py`.
+    - **The leak.** The PGI arm fitted these weights on GWAS of all 215,872 training participants, so every training
+      participant's own label is in their own block scores: the third lesson of item 15, which sank the in-sample ridge
+      start. No fold-wise PGI weights exist (5 GWAS and 150 fits, days of CPU). So each method has two arms: (a) as asked,
+      the full-rung weights with the network trained on all 215,872 (in-sample); (b) a leak-free control, the weights of
+      the 107,743 rung (its GWAS used half the training set) with the network trained on the other 108,129 (dataset
+      `hm3plus_c107743`, `make_complement.py`). The tuning set is outside every GWAS, so neither arm is optimistic there;
+      a leak can only cost arm (a). Its size is measured: each PGI's AUROC on 20,000 training participants against the
+      tuning set (the table's manifest).
+    - **The comparison** is the lift over the PGI itself by `PGI/methods.md` section 6: per disease, the network's logit
+      and the PGI are each combined with the 12 covariates by the PGI arm's own logistic regression on the tuning set,
+      and their AUROCs compared with a paired bootstrap (2,000 resamples stratified by case status; one shared resample
+      of participants for the mean over the 30). Arm (a) is compared with the full-rung PGI, as the PGI arm reports it;
+      arm (b) with the 107,743-rung PGI. `compare_pgi_tables.py`; chain `chains/run_pgi_tables.sh`; outputs in
+      `runs/pgi_tables/`.
+
 ## References
 
 Kaplan J, McCandlish S, Henighan T, et al. Scaling laws for neural language models. arXiv
