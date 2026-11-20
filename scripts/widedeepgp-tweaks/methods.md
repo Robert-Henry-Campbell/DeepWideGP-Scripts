@@ -55,9 +55,9 @@ independent check of every cached run. `queue.log` is the record; `logs/<job>.lo
 | 1 | `search_paper` (4 workers, 24 trials) | an Optuna search over the published paper's grid: batch {32, 64, 128}, mixer layers {1, 2, 3}, width {16, 32, 64}, heads {2, 4, 8}, head hidden layers {1, 2, 4}, dropout [0.05, 0.3], learning rate [1e-5, 1e-3], weight decay [1e-5, 1e-3], plus the mixer kind {transformer, bi-Mamba}; successive halving after 2 epoch-equivalents | `--tune_space paper`; the frozen table is not searched |
 | 5 | `search_opt256` (4 workers, 16 trials) | batch 256 and a search of the optimiser: learning rate [3e-5, 3e-3], weight decay [1e-6, 1e-2], dropout [0, 0.4], schedule {plateau, cosine, constant}, warm-up {0, 200, 1000} | `--tune_space optimizer` |
 | 4 | `e11_build` then `classic_e11_r07_balanced` | the classic DeepGP for type 2 diabetes (E11) with the paper's clumping (r2 0.7 within 500 kb, p <= 0.05; `build_datasets.py --r2 --kb`) instead of the comparator's r2 0.1 / 250 kb: 47,341 SNPs (101,861 with p <= 0.05); published settings, balanced batches as the paper's 1:1 sets; 12 covariates (the paper: age, sex, 6 PCs) | the paper reports T2D 0.64 on a balanced hold-out against 0.60 for its PRS; our yardsticks for E11: covariates 0.6708, ridge PRS + covariates 0.7039, LDpred2 0.7238 (PGI protocol) |
-| 2 | `blockattn_lasso`, `blockattn_ldpred`, `blockattn_ridge`, `blockattn_lasso_k64` | `--block_attn K`: in every block the K SNPs with the largest rows of the frozen table form a short sequence (token = dosage-scaled table row, the dosage itself and a learned identity per SNP) with the block's pooled vector as one more token; a transformer layer shared by all blocks (self-attention over the pairs of SNPs) runs over each block's sequence and the mean of its outputs is added to the block's token; then the mixer over blocks with the covariate token and the head, as before | K = 32 (431 x 33 tokens per participant), width 32, one layer; the selected dosages are cached in bfloat16 beside the pooled vectors; the lassosum2 and LDpred2 versions use the other agent's 30-channel tables, the ridge version the fold-routed 16-channel table (each participant's rows from the copy fitted without them) |
-| 6 | `blockmamba_lasso`, `blockmamba_ridge` | the same with the published bi-Mamba block within each block, reading its K SNPs in genomic order (local context), the 30 or 16 SNP weights never updating; the mixer over blocks and the head are the "classic second layer" | |
-| baselines for 2 and 6 | `pgi_lasso_frozen`, `pgi_ldpred_frozen` | the frozen PGI tables under the base recipe | the other agent's chain runs the same tables under the main tree's code; mine give the within-block runs a like-for-like control |
+| 2 | `blockattn_lasso`, `blockattn_ldpred` (the proposed method, full-rung tables); secondary: `blockattn_lasso_c107`, `blockattn_ldpred_c107` (half-rung weights), `blockattn_ridge`, `blockattn_ridge_k64` | `--block_attn K`: in every block the K SNPs with the largest rows of the frozen table form a short sequence (token = dosage-scaled table row, the dosage itself and a learned identity per SNP) with the block's pooled vector as one more token; a transformer layer shared by all blocks (self-attention over the pairs of SNPs) runs over each block's sequence and the mean of its outputs is added to the block's token; then the mixer over blocks with the covariate token and the head, as before | K = 32 (431 x 33 tokens per participant), width 32, one layer; the selected dosages are cached in bfloat16 beside the pooled vectors; the lassosum2 and LDpred2 versions use the other agent's 30-channel tables (section 4 on their overfitting), the ridge version the fold-routed 16-channel table (each participant's rows from the copy fitted without them) |
+| 6 | `blockmamba_lasso` (proposed); secondary: `blockmamba_lasso_c107`, `blockmamba_ridge` | the same with the published bi-Mamba block within each block, reading its K SNPs in genomic order (local context), the 30 or 16 SNP weights never updating; the mixer over blocks and the head are the "classic second layer" | |
+| baselines for 2 and 6 | `pgi_lasso_frozen`, `pgi_ldpred_frozen` (and `_c107` for the secondary check) | the frozen PGI tables under the base recipe | the other agent's chain runs the same tables under the main tree's code; mine give the within-block runs a like-for-like control |
 
 Planned earlier and never run (the LD-block design document, sections 7 and 12, and the chain paused on 18 November):
 the top-rung size axis on the frozen table, `size_s1` (16 x 1), `size_s2` (32 x 2), `s4_rot` (128 x 6), `size_s5`
@@ -83,16 +83,20 @@ buys); the attention readout retried.
   ("keep what improves") read the other way: a decrement is not kept. The items tested on top of the rotation
   (`labelnorm_rot`, `perdisease_rot`, `covskip_rot`, `atten_rot`, `s4_rot`) are judged against `rot10`, and their
   gains, if any, are then confirmed under the base sampler.
-- **The PGI tables carry the training labels.** The lassosum2 score has AUROC 0.887 on the training rows against 0.572 on
-  the tuning set; LDpred2-auto 0.898 against 0.582 (`runs/tweaks/yardsticks/*_summary.json`). A logistic regression of
-  each disease on [its PGI, covariates] fitted on the training rows therefore scores 0.634 (lassosum2) and 0.642
-  (LDpred2) on the tuning set, below the covariates alone, because the fit trusts the in-sample score. The PGI arm's
-  own figures (0.6829, 0.6873) come from a refit on the tuning set, which hides this. A network trained on the training
-  rows with such a table reads the labels off it (the warm-start lesson of 18 November, whose signature is a tuning
-  AUROC that peaks at the first validations and falls). So: the "naive PGI" yardstick the deep arm's way is below the
-  floor and useless; the honest comparison of a PGI-table network is its gain over the covariates against the PGI
-  arm's gain over its own covariates (+0.0175 lassosum2, +0.0219 LDpred2); and items 2 and 6 were run twice, on the
-  lassosum2 table as asked and, leak-free, on the fold-routed ridge table. The other agent was told at 00:40 UTC.
+- **The PGI weights fitted on the training rows overfit them, and the proposed method is run as specified.** The
+  lassosum2 score has AUROC 0.887 on the training rows against 0.572 on the tuning set; LDpred2-auto 0.898 against 0.582
+  (`runs/tweaks/yardsticks/*_summary.json`): with 1.2 million weights fitted from the GWAS of 215,872 participants, the
+  score fits those participants far better than new ones. A logistic regression of each disease on [its PGI, covariates]
+  fitted on the same training rows therefore trusts the score too much and scores 0.634 (lassosum2) and 0.642 (LDpred2)
+  on the tuning set, below the covariates alone; the PGI arm's own figures (0.6829, 0.6873) come from a refit on the
+  tuning set, which does not see this. A network trained on the training rows with such a table learns the same overfit
+  score (the other agent's frozen-table runs peak at their first validation, 0.6447 and 0.6546, and fall), as the
+  in-sample ridge warm start did on 18 November. Robert's instruction (03:30 UTC): this is overfitting on the training
+  data and a result to report, not something to route around, so items 2 and 6 and their frozen-table controls run on
+  the full-rung tables exactly as proposed, and the "naive PGI" yardstick is the PGI arm's protocol figure. As a
+  secondary check (the fix tried first), the same architectures also run on the other agent's tables built from the
+  107,743-rung's weights for the 108,129 other training participants (dataset `hm3plus_c107743`), where the weights
+  were fitted on none of the participants they are applied to, and on the fold-routed ridge table.
 - **Pooled vectors kept on disk.** `--first_layer_cache DIR` (DeepWideGP `tweaks`) writes the training and tuning
   splits' pooled vectors (and, with `--block_attn`, the selected dosages) once per table, dataset, partition, folds,
   scaling and device, owner-only under `data/.../blocks/cache/`, and later runs load them (10 to 20 s) instead of

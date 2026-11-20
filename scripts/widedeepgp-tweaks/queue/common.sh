@@ -74,3 +74,11 @@ train_c107() {   # train_c107 NAME METHOD [flags...]: a run on the leak-free fro
     (cd "$CODE3" && $PY main_multilabel.py $PGI_BASE_FLAGS --exp_name "$name" $C107_FLAGS --init_encoder $C107_BLOCKS/init_pgi_${method}_d30.pt \
         --embed_dim 30 "$@" $resume) || return $?
 }
+
+best_flags() {   # best_flags SEARCH_RUN: the chosen trial's searched settings of a finished search, as command-line flags
+    $PY - "$RUNS/$1/results.json" <<'PYEOF'
+import json, sys
+p = json.load(open(sys.argv[1]))["best_params"]
+print(" ".join(f"--{k} {v}" for k, v in p.items()))
+PYEOF
+}

@@ -1,5 +1,5 @@
 # slots: 1
-# after: 069_wait_leakfree_tables
+# after: 069_wait_leakfree_log
 source /mnt/sdg/robert/deepwidegp/runs/tweaks/queue/common.sh
 # Item 6 on the leak-free lassosum2 table: the published bi-Mamba block within each block, reading its 32 strongest SNPs in genomic
 # order with the frozen lassosum2 rows (never updated), feeding the attention mixer over blocks and the head.
