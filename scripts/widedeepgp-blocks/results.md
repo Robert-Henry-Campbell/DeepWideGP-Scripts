@@ -341,19 +341,22 @@ Per-disease rows: `results/pgi_tables/compare.csv`.
 
 | Weights | Arm | Network trained on | PRS + covariates | Network + covariates | Lift | Diseases: lift / no clear difference / worse | Best at (epoch-eq) |
 |---|---|---|---|---|---|---|---|
-| lassosum2 | leak-free control | 108,129 | 0.6766 | 0.6711 | -0.0055 [-0.0068, -0.0042] | 0 / 20 / 10 | 9.26 |
-| LDpred2-auto | leak-free control | 108,129 | 0.6800 | 0.6729 | -0.0071 [-0.0085, -0.0057] | 0 / 19 / 11 | 10.01 |
-| lassosum2 | full rung, in-sample | 215,872 | 0.6829 | 0.6727 | -0.0101 [-0.0116, -0.0085] | 0 / 17 / 13 | 0.25 |
-| LDpred2-auto | full rung, in-sample | 215,872 | 0.6873 | 0.6760 | -0.0112 [-0.0130, -0.0096] | 0 / 15 / 15 | 0.5 |
+| lassosum2 | as proposed: full rung (in-sample weights) | 215,872 | 0.6829 | 0.6727 | -0.0101 [-0.0116, -0.0085] | 0 / 17 / 13 | 0.25 |
+| LDpred2-auto | as proposed: full rung (in-sample weights) | 215,872 | 0.6873 | 0.6760 | -0.0112 [-0.0130, -0.0096] | 0 / 15 / 15 | 0.5 |
+| lassosum2 | check: leak-free control | 108,129 | 0.6766 | 0.6711 | -0.0055 [-0.0068, -0.0042] | 0 / 20 / 10 | 9.26 |
+| LDpred2-auto | check: leak-free control | 108,129 | 0.6800 | 0.6729 | -0.0071 [-0.0085, -0.0057] | 0 / 19 / 11 | 10.01 |
 
-- **No lift anywhere.** The network on a frozen PGI table is below the PRS it was built from for both methods, by 0.006
-  to 0.007 without a leak; no disease shows a significant gain in any arm. The leak-free control runs had levelled
-  off: over their last two passes (8.26 to 10.01 epoch-equivalents) the raw mean moved by +0.0005 and +0.0003, within
-  the run-to-run noise, so a longer budget is unlikely to close a gap of 0.006 to 0.007.
-- **The leak costs about 0.004 more and shows its signature.** The full-rung tables give the PRS an AUROC of 0.887
-  (lassosum2) and 0.898 (LDpred2-auto) on 20,000 training participants against 0.572 and 0.582 on the tuning set; the
-  networks trained on them peaked at the first or second validation (0.6447 at 0.25, 0.6546 at 0.5 epoch-equivalents,
-  raw) and declined until early stopping. The control tables show no gap (0.550 / 0.556 and 0.562 / 0.564).
+- **The model as proposed does worse than the PRS it was built from, and overfits.** On the full rung the network is
+  below its own PRS + covariates by 0.0101 (lassosum2) and 0.0112 (LDpred2-auto), with 0 of 30 diseases better and 13
+  to 15 worse. It peaks at the first or second validation (0.6447 at 0.25 and 0.6546 at 0.5 epoch-equivalents, raw)
+  and declines until early stopping: the PGI weights come from GWAS of the same 215,872 training participants, so the
+  PRS reads their labels (AUROC 0.887 and 0.898 on 20,000 training participants against 0.572 and 0.582 on the tuning
+  set), and the network learns that shortcut.
+- **Check, not the headline: without the leak it still does not lift.** With the 107,743 rung's weights and the
+  network trained on the other 108,129 (no overlap; the PRS shows no gap, 0.550 / 0.556 and 0.562 / 0.564), it is
+  below that PRS + covariates by 0.0055 and 0.0071, 0 of 30 diseases better and 10 to 11 worse. These runs had
+  levelled off: over their last two passes (8.26 to 10.01 epoch-equivalents) the raw mean moved by +0.0005 and
+  +0.0003, within the run-to-run noise.
 - **Where the network loses** is where the ridge-table network lost (item 20): E03 (-0.038 and -0.043 in the controls),
   K80, C44, E11. These runs used the mean readout, but the network can already weight blocks (four layers of
   self-attention across the block tokens), and on the ridge table the per-disease attention readout did not help them
