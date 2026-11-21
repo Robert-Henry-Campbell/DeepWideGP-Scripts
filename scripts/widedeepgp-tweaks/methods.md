@@ -130,3 +130,48 @@ DeepWideGP branch `tweaks` (commits after 5c47884): `--tune_space paper | optimi
 (11 tests, CPU; the within-block bi-Mamba path checked on a GPU with the synthetic store). Scripts
 `classic-deepgp-comparator/build_datasets.py --r2 --kb`. The queue, the yardstick scripts and the summary are copied
 here under `queue/` and `tools/` from `runs/tweaks/`.
+
+## 6. The combined model and the partition test (21 November 2026)
+
+Robert asked: combine every change that tested better overnight, and where two changes are alternatives take the
+nominally better one, however small the difference; then test that model on the 431 Privé blocks against the 2,000- and
+5,000-block refinements, refitting the block ridge on each partition.
+
+**The combined model.** Each choice, with the comparison that decided it (tuning AUROC, mean of 30 diseases):
+
+| choice | taken | instead of | evidence |
+|---|---|---|---|
+| table width | 32 | 4, 16, 64 | 0.6753 against 0.6729, 0.6735, 0.6748 |
+| recipe | the paper-grid search's: batch 32, transformer width 32 × 2 layers, 4 heads, 2 head layers, lr 7.4e-5, weight decay 1.1e-5, dropout 0.19 | the base recipe (batch 64, S3, lr 1e-4, weight decay 1e-3, dropout 0.2); the batch-256 search's (lr 3.8e-4, weight decay 6.8e-4, dropout 0.12) | 16-wide table, 20 epoch-equivalents: 0.6746 against 0.6741 and 0.6739; 10 epoch-equivalents: 0.6741 against 0.6735 and 0.6740. On the 32-wide table only the other two ran (0.6756, 0.6755) |
+| mixer | transformer | bi-Mamba | the paper search: 0.6741 against 0.6738 (at S3 the Mamba led by 0.0001, in a recipe the search ranked lower) |
+| schedule | cosine to zero with 200 warm-up steps | plateau | 20 epoch-equivalents: 0.67412 against 0.67405 |
+| budget | 20 epoch-equivalents | 10, 50 | 0.67405 against 0.67351 and 0.67404 |
+| batches | shuffled, natural prevalence | the disease-balanced rotation | 0.6735 against 0.6722 |
+| readout | mean, with a per-disease head of width 32 | the attention readout, which this code cannot combine with the head | head +0.0003 (0.6739); attention +0.0002, on the rotation |
+| loss | each disease's loss divided by the entropy of its prevalence | plain cross-entropy | 0.6737 against 0.6735 |
+
+Left out because they tested worse: the covariate skip, the within-block modules, the S1, S4 and S5 mixers, input masking.
+The per-disease head and the entropy loss did not add in the two stacks that ran (the 32-wide table with the head 0.6750
+against 0.6756 without; the paper recipe with head and loss 0.6745 against 0.6746); Robert's instruction keeps them in.
+
+**The test.** Three trainings of the combined model, identical except the partition: `prive431` (431 blocks of 119 to
+15,194 SNPs), `ldsplit2000` (2,000 blocks; 60 to 2,314 SNPs, median 475) and `ldsplit5000` (5,000 blocks; 19 to 1,108,
+median 193), the nested partitions built on 17 November. Each partition gets:
+- its own block ridge (`build_block_ridge.py`), on the same 215,872 training participants, store, SNP statistics, five folds
+  and three penalties as the 431-block ridge. The folders `data/datasets/ard30/hm3plus_ld2000` and `_ld5000` hold only
+  these products; their sample tables link to the top rung's;
+- its own 32-wide fold-routed warm start (`make_warm_start.py`, unit-RMS tokens);
+- its own linear yardstick: that partition's cross-fitted ridge PRS with the covariates (`fit_block_linear.py --prs_only`).
+
+The finer ridges model LD only inside the smaller blocks, so the table changes with the partition as well as the tokens.
+Reading each network against its own partition's ridge PRS separates the two. The finer partitions write no channel files
+(`--no_channels`: at 5,000 blocks the training split's channels would take 390 GB of scratch disk), so they have no
+logistic twin. The first layer is cached in host memory (about 13, 60 and 151 GB), filled in place (DeepWideGP `tweaks`
+a74b5e9), never on disk. Each job waits until the host has its memory plus 100 GB to spare and GPU 2 has its VRAM free.
+Seed 1 only; four snapshots per run. Queue `runs/partition_test/queue` (frozen code `code_a74b5e9`, scripts
+`scripts_e7045c6`); table `runs/partition_test/summary.md`.
+
+**GPU coordination.** GPU 2 was empty; GPUs 0 and 1 belong to another user, 3 and 4 run other sessions' jobs (Delphi;
+the Kelemen MLP ladder and scPRS). Every session was asked about its plans first. None clashed. The PGI chain borrows GPU 2
+for about five minutes every one to two hours. The PRSformer synthetic chain (session deepwidegp-7c) has waited since
+17:17 UTC under the old leave-one-free rule and could start only on GPU 2: which job has GPU 2 is Robert's call.
