@@ -13,9 +13,11 @@ disease only, hypertension (I10), the disease with the highest effective sample 
 (N_eff 186,775 in the full training set). It is fitted at each of the five training sizes.
 
 For I10 this places three kinds of model side by side at every size:
-- the seven linear PGIs;
+- the six linear PGIs[^sbrc7m];
 - the classic DeepGP;
 - WideDeepGP.
+
+[^sbrc7m]: SBayesRC on the 7M imputed set was dropped on 21 Nov 2026 for its compute cost (`PGI/methods.md` §5.6).
 
 ## SNPs
 

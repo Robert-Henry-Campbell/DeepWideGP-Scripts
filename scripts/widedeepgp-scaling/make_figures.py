@@ -75,8 +75,8 @@ def curves_by_family(cells, families=None):
     legend = ("**Figure | Learning curves by model family, pooled over diseases.** (**a**) Gain in tuning-set AUROC over the "
               "covariate-only model and (**b**) its liability-scale R2 against the median effective sample size of the training "
               "set, mean over the 30 diseases. The deep envelope (per rung the mixer size and table width with the highest mean "
-              "tuning AUROC) is shown with its seed range; the strongest linear method is PGI methods 6.3's rule; the seven PGI "
-              "methods are grey. Every value is a tuning-set number until the unlock. Data: the accompanying _data.csv.")
+              "tuning AUROC) is shown with its seed range; the strongest linear method is PGI methods 6.3's rule; the six PGI "
+              "methods are grey (SBayesRC on the 7M imputed set was dropped for its compute cost). Every value is a tuning-set number until the unlock. Data: the accompanying _data.csv.")
     return fig, pd.DataFrame(rows), legend
 
 
