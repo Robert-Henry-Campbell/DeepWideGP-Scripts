@@ -193,3 +193,63 @@ published network reads from its 28,536 SNPs alone, on a scale where the floor i
   added, which would point at the optimisation of the with-covariate run, not the architecture. The AUROC without
   covariates compares only with the covariate-free yardsticks, never with the runs above. Result: results.md,
   "Without covariates".
+
+## Ladder runs: the published network with risk-allele dosages (Robert, 21 November 2026)
+
+What the DeepGP replication taught (`scripts/deepgp-replication/results.md`): the published network learns from SNPs
+only when each dosage counts the risk allele. With that change, the published network runs on all five rungs and
+all 30 diseases: 150 runs, one seed. Earlier classic runs fed ALT dosages, which are as good as random for this,
+and sat at the covariate floor.
+
+- **SNPs.** The paper's rule on each rung's own GWAS of the disease (the PGI arm's REGENIE fit on exactly that rung's
+  training people): p <= 0.05, clumped at r2 0.7 within 500 kb on the LD panel (`build_lists.py`, which uses
+  `build_datasets.leads`). Expected 30,000-58,000 SNPs per run; the E11 top-rung list is the earlier
+  `classic_e11_r07_n215872` selection exactly (47,341 SNPs).
+- **Risk-allele dosages.** Each SNP is turned to count the allele whose log odds ratio in that GWAS is above 0: a sign
+  of -1 on the standardised dosage where the store's REF allele raises risk (about half the SNPs), which equals
+  recoding the dosage to 2 - dosage.
+- **Genotypes are streamed from the main HapMap3+ store.** Each run's folder holds a SNP list with signs and links to
+  the rung's sample tables, nothing else (`data/classic_deepgp_ladder/datasets/<disease>/<rung>/`). The loader
+  decodes whole rows and keeps the listed SNPs (DeepWideGP `genostore/datamodule.py`, store.json `"snps"`).
+  Per-disease stores would take about 280 GB. Checked: the E11 top-rung list gives the same SNP IDs, labels,
+  covariates and dosages for 400 people as the dedicated store.
+- **The network and its settings: the paper's type 2 diabetes configuration, for every disease and rung, without a
+  search** (Supp. Table 7 = the published `scripts/t2d.sh`): batch 64, one Mamba block per chromosome (the
+  one-direction "v1" block), width 32, dropout 0.2, AdamW at 7e-4 with weight decay 1e-4, four attention heads, two
+  dense layers, the 3-wide convolutional SNP embedding and attention pooling, base-pair positions in the positional
+  code. Why T2D: it is the only configuration the authors published, and the replication reached the paper's DeepGP
+  level with it on our data (0.648-0.652 against 0.64). One setting for all diseases is the little-selection figure
+  of CLAUDE.md section 6.
+- **Code.** DeepWideGP `main_genome.py`, the published training script, lightly edited (commit 50f0ae6, frozen in
+  `runs/classic_deepgp_ladder/code_50f0ae6`):
+  - the published test scoring is commented out; the best model scores the tuning set instead;
+  - `--seed` and `--data_dir` are honoured;
+  - validation stays every 300 batches, now counted across epochs. At the smallest rung an epoch holds fewer than
+    300 batches, which Lightning refused.
+- **Batches: half cases, by recycling the cases** (`--balanced_batches`; the rotation sampler with one label, as the
+  section above). Every batch of 64 holds 32 cases and 32 non-cases. An epoch shows every non-case once; the cases
+  come round as often as that takes, in reshuffled passes. No participant is dropped. This gives the paper's 1:1
+  training batches without throwing away controls.
+- **Stopping.** The published code's numbers:
+  - validation every 300 batches, stopping after 10 checks without improvement, at most 30 epochs; the best check
+    is kept;
+  - validation is on the 20,000 tuning people, outside every GWAS, not on the code's 15% of the training people,
+    who sit inside it;
+  - the metric is AUROC over the whole tuning set. The code averages AUROC over batches of 64, and at population
+    prevalence many such batches hold one case or none.
+- **Covariates.** The study's 12 (birth year, sex, PC1-10), standardised on the training rows; the paper used 8. In
+  the replication the two sets scored the same on covariates alone (0.670 vs 0.669).
+- **Before the ladder: a simulated-trait check** (CLAUDE.md section 6). The same pipeline runs on `sim200` of the
+  pilot's simulated traits (40,000 training people with its own GWAS, 10,000 tuning people). The ladder starts only
+  if its tuning AUROC reaches 0.60; covariates carry no signal for that trait.
+- **Order, GPUs and budget** (`runs/classic_deepgp_ladder/schedule.py`):
+  - the smallest rung goes first; each rung's first run computes the SNP statistics the rung's 30 runs share;
+  - a run starts only on a GPU with nobody else's job, at most two of these runs per GPU and four at once (peak
+    about 6.5 GB each, measured), with two loader workers and one maths thread each;
+  - the chain stops at the first failed run, or once it has used 336 GPU-hours, the comparator rule's two weeks on
+    one GPU;
+  - expected about 65 GPU-hours (see the plan's estimate); the per-run results go to
+    `runs/classic_deepgp_ladder/results/`.
+- **Scoring.** Each run's tuning AUROC and predictions are kept. The comparison with covariates alone and with the
+  PGIs follows the shared protocol (`PGI/methods.md` section 6). The locked test set is scored once, with the other
+  arms, at the end.
