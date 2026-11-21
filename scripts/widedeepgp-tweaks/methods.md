@@ -142,7 +142,7 @@ nominally better one, however small the difference; then test that model on the 
 | choice | taken | instead of | evidence |
 |---|---|---|---|
 | table width | 32 | 4, 16, 64 | 0.6753 against 0.6729, 0.6735, 0.6748 |
-| recipe | the paper-grid search's: batch 32, transformer width 32 × 2 layers, 4 heads, 2 head layers, lr 7.4e-5, weight decay 1.1e-5, dropout 0.19 | the base recipe (batch 64, S3, lr 1e-4, weight decay 1e-3, dropout 0.2); the batch-256 search's (lr 3.8e-4, weight decay 6.8e-4, dropout 0.12) | 16-wide table, 20 epoch-equivalents: 0.6746 against 0.6741 and 0.6739; 10 epoch-equivalents: 0.6741 against 0.6735 and 0.6740. On the 32-wide table only the other two ran (0.6756, 0.6755) |
+| recipe | the paper-grid search's: batch 32, transformer width 32 × 2 layers, 4 heads, 2 head layers, lr 7.4e-5, weight decay 1.1e-5, dropout 0.19 | the base recipe (batch 64, S3, lr 1e-4, weight decay 1e-3, dropout 0.2); the batch-256 search's (lr 3.8e-4, weight decay 6.8e-4, dropout 0.12) | 16-wide table, 20 epoch-equivalents: 0.67455 against 0.67405 and 0.67386; 10 epoch-equivalents: 0.6741 against 0.6735 and 0.6740. On the 32-wide table only the other two ran (0.67555, 0.67550) |
 | mixer | transformer | bi-Mamba | the paper search: 0.6741 against 0.6738 (at S3 the Mamba led by 0.0001, in a recipe the search ranked lower) |
 | schedule | cosine to zero with 200 warm-up steps | plateau | 20 epoch-equivalents: 0.67412 against 0.67405 |
 | budget | 20 epoch-equivalents | 10, 50 | 0.67405 against 0.67351 and 0.67404 |
@@ -151,8 +151,8 @@ nominally better one, however small the difference; then test that model on the 
 | loss | each disease's loss divided by the entropy of its prevalence | plain cross-entropy | 0.6737 against 0.6735 |
 
 Left out because they tested worse: the covariate skip, the within-block modules, the S1, S4 and S5 mixers, input masking.
-The per-disease head and the entropy loss did not add in the two stacks that ran (the 32-wide table with the head 0.6750
-against 0.6756 without; the paper recipe with head and loss 0.6745 against 0.6746); Robert's instruction keeps them in.
+The per-disease head and the entropy loss did not add in the two stacks that ran (the 32-wide table with the head 0.67495
+against 0.67555 without; the paper recipe with head and loss 0.67451 against 0.67455); Robert's instruction keeps them in.
 
 **The test.** Three trainings of the combined model, identical except the partition: `prive431` (431 blocks of 119 to
 15,194 SNPs), `ldsplit2000` (2,000 blocks; 60 to 2,314 SNPs, median 475) and `ldsplit5000` (5,000 blocks; 19 to 1,108,
