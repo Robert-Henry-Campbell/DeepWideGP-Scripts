@@ -11,7 +11,7 @@ training rows by the model that excluded them and the others by their pseudo-fol
 make_folds.py); the penalty per disease is chosen on the tuning set (highest AUROC of the cross-fitted PRS).
 Products, owner-only, under <dataset_dir>/blocks/: ridge_weights_fold<f>.npy and ridge_weights_full.npy
 (float32 [M, 90], column 3 j + p for disease j and penalty p), ridge_manifest.json, prs_<split>.npz,
-channels_<split>.npy (int8 [n, blocks, 90]), channels_manifest.json, and blocks.json beside store.json.
+channels_<split>.npy (int8 [n, blocks, 90]; not with --no_channels), channels_manifest.json, and blocks.json beside store.json.
 Resumable: a chromosome whose weights sit in blocks/partial/ and a split whose files exist are not redone.
 The test split needs --unlock_test (logged in blocks/test_access.log).
 
@@ -100,18 +100,22 @@ def solve_chromosome(rung, part, chrom, rows, folds, t, B, mean, inv, lams, a):
     return W.numpy()
 
 
-def score_split(rung, part, split, tab, folds, W, mean, inv, a):
+def score_split(rung, part, split, tab, folds, W, mean, inv, a, keep=True):
     """Scores a split: every row's block channels with its fold model's weights, written raw (float32) to
-    blocks/partial/channels_<split>_raw.npy; returns that memmap and the PRS at every penalty, float32 [n, 90]."""
+    blocks/partial/channels_<split>_raw.npy unless not ``keep``; returns that memmap (or None) and the PRS at every
+    penalty, float32 [n, 90]."""
     store, rows, dev = tab["store"], tab["rows"], mean[0].device
     chroms = list(store.chroms)
-    raw = np.lib.format.open_memmap(os.path.join(rung.blocks, "partial", f"channels_{split}_raw.npy"), mode="w+",
-                                    dtype=np.float32, shape=(len(rows), part["n_blocks"], W[0][0].shape[1]))
-    chmod600(raw.filename)
-    total = np.zeros((len(rows), raw.shape[2]), dtype=np.float32)
+    shape = (len(rows), part["n_blocks"], W[0][0].shape[1])
+    raw = None
+    if keep:
+        raw = np.lib.format.open_memmap(os.path.join(rung.blocks, "partial", f"channels_{split}_raw.npy"), mode="w+",
+                                        dtype=np.float32, shape=shape)
+        chmod600(raw.filename)
+    total = np.zeros((len(rows), shape[2]), dtype=np.float32)
     batches = np.array_split(np.arange(len(rows)), max(1, len(rows) // a.batch_rows))
     for idx, qs in prefetch(lambda b: (b, [store.read_q(c, rows[b]) for c in chroms]), batches, a.threads):
-        ch = torch.zeros(len(idx), raw.shape[1], raw.shape[2], device=dev)
+        ch = torch.zeros(len(idx), shape[1], shape[2], device=dev)
         sel = [torch.as_tensor(np.flatnonzero(folds[idx] == f), device=dev) for f in range(K_FOLDS)]
         for ci, (c, q) in enumerate(zip(chroms, qs)):
             z = standardise(q, mean[ci], inv[ci])
@@ -120,9 +124,11 @@ def score_split(rung, part, split, tab, folds, W, mean, inv, a):
                     zf = z[sel[f]]
                     for b, s, e in part["blocks"][c]:
                         ch[sel[f], b] = zf[:, s:e] @ W[f][ci][s:e]
-        raw[idx] = ch.cpu().numpy()
+        if keep:
+            raw[idx] = ch.cpu().numpy()
         total[idx] = ch.sum(1).cpu().numpy()
-    raw.flush()
+    if keep:
+        raw.flush()
     return raw, total
 
 
@@ -171,6 +177,8 @@ def main(argv=None):
     ap.add_argument("--batch_rows", type=int, default=512)
     ap.add_argument("--threads", type=int, default=8, help="store reader threads")
     ap.add_argument("--gram_gb", type=float, default=20.0, help="device memory for one group's per-fold grams")
+    ap.add_argument("--no_channels", action="store_true",
+                    help="write the PRS only, not the int8 block channels (97 GB for the training split at 5,000 blocks; only the linear twin reads them)")
     a = ap.parse_args(argv)
     torch.backends.cuda.matmul.allow_tf32 = False
     rung = Rung(a.dataset_dir)
@@ -191,7 +199,8 @@ def main(argv=None):
                     fold_counts=np.bincount(folds, minlength=K_FOLDS).tolist(),
                     standardisation={"file": os.path.basename(stats_path), "sha256": sha256_file(stats_path)},
                     partition={k: part[k] for k in ("path", "sha256", "n_blocks")},
-                    folds_sha256=sha256_file(os.path.join(rung.blocks, "folds.npz")), device=a.device)
+                    folds_sha256=sha256_file(os.path.join(rung.blocks, "folds.npz")), device=a.device,
+                    channels_written=not a.no_channels)
 
     # 1. weights per model, chromosome by chromosome (resumable through blocks/partial/)
     weights = {m: os.path.join(rung.blocks, f"ridge_weights_{m}.npy") for m in MODELS}
@@ -234,15 +243,15 @@ def main(argv=None):
     order = [s for s in ("train", "val") if s in a.splits] + [s for s in a.splits if s not in ("train", "val")]
     pending = []
     for split in order:
-        if all(os.path.exists(p) for p in products(rung.blocks, split)):
+        if all(os.path.exists(p) for p in products(rung.blocks, split)[:1 if a.no_channels else 2]):
             continue
         tab = rung.table(split)
         fold = rung.folds(split, tab["iid"])
         t1 = time.time()
-        raw, total = score_split(rung, part, split, tab, fold, W, m32, i32, a)
+        raw, total = score_split(rung, part, split, tab, fold, W, m32, i32, a, keep=not a.no_channels)
         manifest["seconds"][f"score_{split}"] = round(time.time() - t1, 1)
         print(f"{split}: {len(fold)} rows scored in {time.time() - t1:.0f} s", flush=True)
-        if split == "train":
+        if split == "train" and not a.no_channels:
             scale = channel_scale(raw)
             cman["mean"], cman["sd"] = scale[0].tolist(), scale[1].tolist()
         if split == "val":
@@ -252,15 +261,16 @@ def main(argv=None):
             manifest["tuning_auroc_by_penalty"] = {lab: [None if np.isnan(v) else round(float(v), 4) for v in row]
                                                   for lab, row in zip(rung.labels, table)}
         pending.append((split, tab, fold, raw, total))
-        if scale is None or choice is None:
+        if (scale is None and not a.no_channels) or choice is None:
             continue
         for sp, tb, fd, rw, tt in pending:
             prs_path, ch_path = products(rung.blocks, sp)
-            shape = list(rw.shape)
-            quantise(rw, scale, ch_path)
+            if not a.no_channels:
+                shape = list(rw.shape)
+                quantise(rw, scale, ch_path)
+                cman["files"][os.path.basename(ch_path)] = {"shape": shape, "sha256": sha256_file(ch_path)}
             save_npz(prs_path, iid=tb["iid"], labels=np.array(rung.labels), fold=fd.astype(np.int8), y=tb["y"],
                      score=tt[:, n_pen * np.arange(len(rung.labels)) + np.asarray(choice)], score_all=tt)
-            cman["files"][os.path.basename(ch_path)] = {"shape": shape, "sha256": sha256_file(ch_path)}
             manifest["files"][os.path.basename(prs_path)] = sha256_file(prs_path)
         pending.clear()
         save_json(mpath, manifest)

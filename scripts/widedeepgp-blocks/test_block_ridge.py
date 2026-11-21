@@ -517,3 +517,41 @@ def test_make_warm_start_fold_copies_are_the_fold_ridges_in_the_full_ridges_basi
     assert np.sqrt(s2 / n) == pytest.approx(1.0, rel=1e-4) and src["scale_rows"] == len(tr["rows"])
     cf = np.load(os.path.join(built["blocks"], "prs_train.npz"))                      # the copies carry no row's own label:
     assert np.array_equal(cf["fold"], fold)                                          # the folds are the cross-fitted PRS's
+
+
+def test_a_build_without_channels_gives_the_same_weights_prs_and_penalties(built, tmp_path):
+    """--no_channels (for the finer partitions, whose channel files would need hundreds of GB) writes the same ridge
+    weights, cross-fitted PRS and penalty choice as a full build, and no channel file or partial folder; --prs_only then
+    gives the full fit's ridge-PRS AUROCs without reading channels."""
+    d = str(tmp_path / "store_nochan")
+    shutil.copytree(built["dir"], d, symlinks=True)
+    shutil.rmtree(os.path.join(d, "scores"), ignore_errors=True)    # earlier tests' fits of the original dataset
+    blocks = os.path.join(d, "blocks")
+    for f in os.listdir(blocks):
+        if f != "folds.npz":
+            p = os.path.join(blocks, f)
+            shutil.rmtree(p) if os.path.isdir(p) else os.remove(p)
+    bbr.main([d, "--partition", built["part"], "--splits", "train", "val", "--penalties", *map(str, H2), "--no_channels"])
+    for m in bbr.MODELS:
+        assert np.array_equal(np.load(os.path.join(blocks, f"ridge_weights_{m}.npy")),
+                              np.load(os.path.join(built["blocks"], f"ridge_weights_{m}.npy"))), m
+    for split in ("train", "val"):
+        a, b = np.load(os.path.join(blocks, f"prs_{split}.npz")), np.load(os.path.join(built["blocks"], f"prs_{split}.npz"))
+        for k in ("iid", "fold", "y", "score", "score_all"):
+            assert np.array_equal(a[k], b[k]), (split, k)
+        assert not os.path.exists(os.path.join(blocks, f"channels_{split}.npy"))
+    man = json.load(open(os.path.join(blocks, "ridge_manifest.json")))
+    ref = json.load(open(os.path.join(built["blocks"], "ridge_manifest.json")))
+    assert man["chosen_penalty_index"] == ref["chosen_penalty_index"] and man["channels_written"] is False
+    assert not os.path.exists(os.path.join(blocks, "partial")) and os.path.exists(os.path.join(d, "blocks.json"))
+    try:
+        table = fit_block_linear.main([d, "--prs_only"])
+        full = fit_block_linear.main([built["dir"], "--lam_grid", "10", "1000"])
+        assert list(table.label) == list(full.label) and "auroc_val_logistic_ridge" not in table.columns
+        assert np.allclose(table.auroc_val_ridge_prs, full.auroc_val_ridge_prs, atol=1e-9)
+        assert os.path.exists(os.path.join(d, "scores", "blocks_linear", "ridge_prs", "val_best.npz"))
+        assert not os.path.exists(os.path.join(d, "scores", "blocks_linear", "logistic_ridge"))
+        with pytest.raises(FileNotFoundError):                      # the twin needs the channels
+            fit_block_linear.main([d, "--lam_grid", "10"])
+    finally:
+        shutil.rmtree(os.path.join(HERE, "results", "store_nochan"), ignore_errors=True)

@@ -75,11 +75,10 @@ def main(argv=None):
     ap.add_argument("dataset_dir")
     ap.add_argument("--lam_grid", type=float, nargs="+", default=[1e2, 1e3, 1e4, 1e5, 1e6])
     ap.add_argument("--max_iter", type=int, default=500)
+    ap.add_argument("--prs_only", action="store_true", help="the ridge PRS with the covariates only, without the logistic ridge on the channels")
     a = ap.parse_args(argv)
     t0 = time.time()
     rung = Rung(a.dataset_dir)
-    with open(os.path.join(rung.blocks, "channels_manifest.json")) as f:
-        scale = json.load(f)["scale"]
     tr, va = rung.table("train"), rung.table("val")
     prs = {s: np.load(os.path.join(rung.blocks, f"prs_{s}.npz")) for s in ("train", "val")}
     if (prs["train"]["iid"] != tr["iid"]).any() or (prs["val"]["iid"] != va["iid"]).any():
@@ -87,7 +86,10 @@ def main(argv=None):
     cm, cs = tr["cov"].mean(0), tr["cov"].std(0)
     cs[cs == 0] = 1.0
     cov = {"train": (tr["cov"] - cm) / cs, "val": (va["cov"] - cm) / cs}
-    x = {s: features(rung, s, cov[s], scale) for s in ("train", "val")}
+    if not a.prs_only:
+        with open(os.path.join(rung.blocks, "channels_manifest.json")) as f:
+            scale = json.load(f)["scale"]
+        x = {s: features(rung, s, cov[s], scale) for s in ("train", "val")}
     n_free = len(rung.covariates)
     logit_lr, logit_prs, rows = np.zeros_like(va["y"]), np.zeros_like(va["y"]), []
     part = os.path.join(rung.blocks, "blocks_linear_partial.npz")
@@ -101,25 +103,29 @@ def main(argv=None):
         if lab in done:
             continue
         w, best = None, None
-        for lam in sorted(a.lam_grid, reverse=True):          # the path from the strongest penalty, warm-started
+        for lam in [] if a.prs_only else sorted(a.lam_grid, reverse=True):   # the path from the strongest penalty, warm-started
             w, nit = logistic_ridge(x["train"], tr["y"][:, j], lam, n_free, a.max_iter, w)
             v = predict(x["val"], w)
             au = auroc(v, va["y"][:, j])
             if best is None or au > best["auroc_val_logistic_ridge"]:
                 best = dict(lam=lam, auroc_val_logistic_ridge=au, auroc_train_logistic_ridge=auroc(predict(x["train"], w), tr["y"][:, j]),
                             n_iter=nit, logit=v)
-        logit_lr[:, j] = best.pop("logit")
+        if best is None:
+            best = {}
+        else:
+            logit_lr[:, j] = best.pop("logit")
         pm, ps = prs["train"]["score"][:, j].mean(), prs["train"]["score"][:, j].std() or 1.0    # the raw PRS is tiny: standardise
         xp = {s: np.column_stack([(prs[s]["score"][:, j] - pm) / ps, cov[s]]).astype(np.float32) for s in ("train", "val")}
         w, _ = logistic_ridge(xp["train"], tr["y"][:, j], 0.0, xp["train"].shape[1], a.max_iter)
         logit_prs[:, j] = predict(xp["val"], w)
         rows.append(dict(label=lab, cases_train=int(tr["y"][:, j].sum()), cases_val=int(va["y"][:, j].sum()), **best,
-                         lam_at_grid_edge=best["lam"] in (min(a.lam_grid), max(a.lam_grid)),
+                         lam_at_grid_edge=best.get("lam") in (min(a.lam_grid), max(a.lam_grid)),
                          auroc_val_ridge_prs=auroc(logit_prs[:, j], va["y"][:, j])))
-        print(f"{lab}: logistic ridge {best['auroc_val_logistic_ridge']:.4f} (lambda {best['lam']:g}, {best['n_iter']} iterations), "
-              f"ridge PRS {rows[-1]['auroc_val_ridge_prs']:.4f}; {time.time() - t0:.0f} s", flush=True)
+        twin = "" if a.prs_only else f"logistic ridge {best['auroc_val_logistic_ridge']:.4f} (lambda {best['lam']:g}, {best['n_iter']} iterations), "
+        print(f"{lab}: {twin}ridge PRS {rows[-1]['auroc_val_ridge_prs']:.4f}; {time.time() - t0:.0f} s", flush=True)
         save_npz(part, iid=va["iid"], logit_lr=logit_lr, logit_prs=logit_prs, rows=np.array(json.dumps(rows)))
-    write_scores(rung, "logistic_ridge", va["iid"], logit_lr, va["y"])
+    if not a.prs_only:
+        write_scores(rung, "logistic_ridge", va["iid"], logit_lr, va["y"])
     write_scores(rung, "ridge_prs", va["iid"], logit_prs, va["y"])
     table = pd.DataFrame(rows)
     res = os.path.join(HERE, "results", os.path.basename(rung.dir))
@@ -127,9 +133,9 @@ def main(argv=None):
     table.to_csv(os.path.join(res, "blocks_linear.csv"), index=False, float_format="%.4f")
     if os.path.exists(part):
         os.remove(part)
-    print(f"mean tuning AUROC: logistic ridge {table.auroc_val_logistic_ridge.mean():.4f}, ridge PRS "
-          f"{table.auroc_val_ridge_prs.mean():.4f}; {int(table.lam_at_grid_edge.sum())} of {len(table)} at a grid edge; "
-          f"{time.time() - t0:.0f} s")
+    twin = "" if a.prs_only else (f"logistic ridge {table.auroc_val_logistic_ridge.mean():.4f}, "
+                                  f"{int(table.lam_at_grid_edge.sum())} of {len(table)} at a grid edge; ")
+    print(f"mean tuning AUROC: {twin}ridge PRS {table.auroc_val_ridge_prs.mean():.4f}; {time.time() - t0:.0f} s")
     return table
 
 
