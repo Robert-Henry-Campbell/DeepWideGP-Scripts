@@ -1,0 +1,5 @@
+setting,test_people,covariates alone_auroc,recipe_auroc,joined outside the GWAS_auroc,recipe_minus_covariates,recipe_minus_covariates_ci_low,recipe_minus_covariates_ci_high,joined outside the GWAS_minus_covariates,joined outside the GWAS_minus_covariates_ci_low,joined outside the GWAS_minus_covariates_ci_high
+"Type 2 diabetes, population prevalence; GWAS of the same 215,872 people",20000,0.6692,0.6661,0.7013,-0.0031,-0.0186,0.0113,0.0321,0.0239,0.0397
+"Type 2 diabetes, 1:1 random controls; GWAS of 215,872 people",3326,0.6774,0.6551,0.6987,-0.0223,-0.0435,0.0011,0.0213,0.0119,0.0322
+"Type 2 diabetes, 1:1 random controls; GWAS of the cohort's 34,690 people",3326,0.6774,0.6595,0.6904,-0.0179,-0.0374,0.0022,0.013,0.0051,0.0228
+"Atrial fibrillation, 1:1 random controls; GWAS of 215,872 people",3340,0.7428,0.7041,0.7554,-0.0387,-0.0566,-0.0203,0.0126,0.0054,0.0194

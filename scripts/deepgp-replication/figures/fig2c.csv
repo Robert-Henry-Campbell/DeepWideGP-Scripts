@@ -1,0 +1,9 @@
+prs,method,gwas_people,snps_in_prs,prs_weight_recipe,prs_weight_on_new_people,over_weighting,recipe_test_auroc
+"C+T, GWAS of 215,872 people, HapMap3+ (47,341 lead SNPs)",C+T,"215,872 people",47341,2.857,0.522,5.48,0.6547
+"C+T, cohort's own GWAS, all imputed (98,440 lead SNPs)",C+T,"the cohort's 34,690 people",98440,6.992,0.592,11.8,0.6594
+"LDpred2-auto, cohort's own GWAS, HapMap3+ (1,258,200 SNPs)",LDpred2-auto,"the cohort's 34,690 people",1258200,4.155,0.72,5.77,0.6864
+"C+T, cohort's own GWAS, random 5% of lead SNPs (4,932)",C+T,"the cohort's 34,690 people",4932,2.177,0.19,11.48,0.621
+"C+T, cohort's own GWAS, random 10% of lead SNPs (9,718)",C+T,"the cohort's 34,690 people",9718,3.283,0.264,12.44,0.6283
+"C+T, cohort's own GWAS, random 25% of lead SNPs (24,963)",C+T,"the cohort's 34,690 people",24963,4.933,0.436,11.32,0.6424
+"C+T, cohort's own GWAS, random 50% of lead SNPs (49,058)",C+T,"the cohort's 34,690 people",49058,6.094,0.509,11.97,0.6532
+"C+T, cohort's own GWAS, random 75% of lead SNPs (73,824)",C+T,"the cohort's 34,690 people",73824,6.758,0.559,12.08,0.6571

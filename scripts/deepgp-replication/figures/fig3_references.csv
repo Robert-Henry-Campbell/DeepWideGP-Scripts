@@ -1,0 +1,4 @@
+reference,test_auroc
+Covariates alone,0.6774
+"PRS + covariates, paper's recipe",0.6551
+"PRS + covariates, joined on people outside the GWAS",0.6987

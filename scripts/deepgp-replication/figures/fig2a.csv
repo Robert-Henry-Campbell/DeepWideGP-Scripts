@@ -1,0 +1,4 @@
+model,training part,validation part,test
+"PRS + covariates, paper's recipe",0.9946,0.9947,0.6594
+"DeepGP, risk allele (first check)",0.9921,0.9894,0.6494
+Covariates alone,0.6524,0.6587,0.6776

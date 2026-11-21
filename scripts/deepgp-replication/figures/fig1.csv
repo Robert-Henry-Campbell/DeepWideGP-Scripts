@@ -1,0 +1,18 @@
+figure,panel,setting,model,auroc,ci_low,ci_high
+1,a,"1:1, controls matched on age and sex","DeepGP, minor-allele dosages",0.4998,0.48,0.518
+1,a,"1:1, controls matched on age and sex","DeepGP, risk-allele dosages",0.6147,0.5956,0.634
+1,a,"1:1, controls matched on age and sex","PRS + covariates, paper's recipe",0.6179,0.5995,0.6375
+1,a,"1:1, controls matched on age and sex",Covariates alone,0.5187,0.4984,0.539
+1,a,"1:1, random controls","DeepGP, minor-allele dosages",0.625,0.6052,0.644
+1,a,"1:1, random controls","DeepGP, risk-allele dosages",0.6521,0.6333,0.6725
+1,a,"1:1, random controls","PRS + covariates, paper's recipe",0.6551,0.6356,0.6748
+1,a,"1:1, random controls",Covariates alone,0.6774,0.6591,0.6953
+1,b,"1:1, controls matched on age and sex",A weight per SNP (the PRS),0.6175,0.5988,0.6372
+1,b,"1:1, controls matched on age and sex","One weight shared by all SNPs,
+risk-allele dosages",0.6139,0.595,0.634
+1,b,"1:1, controls matched on age and sex","One weight shared by all SNPs,
+minor-allele dosages",0.5064,0.4868,0.5259
+1,b,"1:1, controls matched on age and sex","One weight per chromosome,
+minor-allele dosages",0.5057,0.487,0.5251
+1,b,"1:1, controls matched on age and sex","Position code used linearly,
+minor-allele dosages",0.5194,0.4991,0.5382
