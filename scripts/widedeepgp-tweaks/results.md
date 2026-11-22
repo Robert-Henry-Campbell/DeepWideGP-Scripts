@@ -241,3 +241,32 @@ Tuning AUROC (mean of 30) by epoch-equivalent, every validation rounded to the n
 | table_d32_pdh20 | 0.6563 | 0.6599 | 0.6686 | 0.6720 | 0.6723 | 0.6729 | 0.6727 | 0.6732 | 0.6731 | 0.6737 | 0.6740 | 0.6747 | 0.6747 | 0.6747 | 0.6747 |  |  |  |
 | table_d4 | 0.6522 | 0.6603 | 0.6679 | 0.6704 | 0.6711 | 0.6712 | 0.6716 | 0.6720 | 0.6723 | 0.6725 | 0.6720 | 0.6729 |  |  |  |  |  |  |
 | table_d64 | 0.6548 | 0.6597 | 0.6650 | 0.6722 | 0.6726 | 0.6733 | 0.6737 | 0.6742 | 0.6743 | 0.6747 | 0.6746 | 0.6748 |  |  |  |  |  |  |
+
+## The combined model and the partition test (21–22 November 2026)
+
+Methods: `methods.md` section 6. Tuning set, mean AUROC over the 30 diseases, seed 1. Records: `runs/partition_test`
+(`summary.md` and each run's `metrics.csv`).
+
+| partition | blocks | network: best within 20 epoch-equivalents (at) | extended to 40 (stopped at): best (at) | ridge PRS + covariates, same partition | network minus it | diseases where the network beats it |
+|---|---|---|---|---|---|---|
+| prive431 | 431 | **0.6748** (15.5; stopped early at 19.5) | not extended | 0.6777 | −0.0028 | 14 of 30 |
+| ldsplit2000 | 2,000 | 0.6734 (17.8) | (31.3): 0.6737 (28.3) | 0.6777 | −0.0043 (−0.0040 extended) | 10 of 30 |
+| ldsplit5000 | 5,000 | 0.6730 (19.8; still rising) | stopped at 20.0, before the extension ran | 0.6775 | −0.0045 | not computed |
+
+Covariates alone: 0.6627. Tuning AUROC by epoch-equivalent:
+
+| partition | 1 | 2 | 4 | 6 | 8 | 10 | 12 | 15 | 20 |
+|---|---|---|---|---|---|---|---|---|---|
+| prive431 | 0.6625 | 0.6715 | 0.6725 | 0.6731 | 0.6735 | 0.6744 | 0.6745 | 0.6746 | |
+| ldsplit2000 | 0.6611 | 0.6633 | 0.6648 | 0.6715 | 0.6722 | 0.6731 | 0.6732 | 0.6732 | 0.6733 |
+| ldsplit5000 | 0.6608 | 0.6628 | 0.6629 | 0.6660 | 0.6713 | 0.6719 | 0.6720 | | |
+
+**Reading.**
+- More blocks did not help, and the finer partitions start learning later: the big step comes at about 1, 4 and 6
+  epoch-equivalents for 431, 2,000 and 5,000 blocks.
+- The linear yardstick barely moves with the partition (0.6777, 0.6777, 0.6775). So the gap comes from the network
+  reading more, smaller blocks, not from a worse table.
+- Extending the 2,000-block run gained 0.0003, still 0.0011 below the 431-block model.
+- **Outcome:** Robert declared the 431-block model the final WideDeepGP (22 November 2026). Its code moved to
+  DeepWideGP `widening`, and its description is DeepWideGP `methods.md` section 4.12. Re-scored by the ported code, it
+  gives its record exactly (0.6748444). The five-rung ladder with seeds 1 to 3 runs in `runs/widedeepgp_ladder`.

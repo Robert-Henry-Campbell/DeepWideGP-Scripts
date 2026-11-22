@@ -175,3 +175,15 @@ Seed 1 only; four snapshots per run. Queue `runs/partition_test/queue` (frozen c
 the Kelemen MLP ladder and scPRS). Every session was asked about its plans first. None clashed. The PGI chain borrows GPU 2
 for about five minutes every one to two hours. The PRSformer synthetic chain (session deepwidegp-7c) has waited since
 17:17 UTC under the old leave-one-free rule and could start only on GPU 2: which job has GPU 2 is Robert's call.
+
+**Outcome (22 November 2026).** Results are in `results.md`, last section. 431 blocks scored best: 0.6748, against
+0.6734 at 2,000 and 0.6730 at 5,000.
+- The finer partitions started learning later, so Robert had them extended to 40 epoch-equivalents (the run's budget
+  raised and the run resumed). He stopped both before the end: 2,000 blocks at 31.3 and 5,000 at 20.0.
+- He then declared the 431-block combined model the final WideDeepGP. It is described in DeepWideGP `methods.md`
+  section 4.12, and it runs on the five-rung ladder with seeds 1 to 3 (`runs/widedeepgp_ladder`).
+- Its code (the per-disease head and the entropy loss) was ported to DeepWideGP `widening` (451e0dc). The other overnight
+  options stay on `tweaks`.
+- Deleted at his request: the 2,000- and 5,000-block checkpoints, snapshots and logs, their ridge folders
+  (`hm3plus_ld2000`, `hm3plus_ld5000`), and the 431-block run's snapshots and last checkpoint. Kept: its best checkpoint,
+  every run's records, and the yardstick tables (`runs/partition_test/yardsticks`).
