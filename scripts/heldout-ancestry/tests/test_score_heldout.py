@@ -132,3 +132,11 @@ def test_only_finished_runs_are_scored_and_a_dry_run_writes_nothing(world, capsy
 def test_a_self_checking_scorer_is_called_once(world, capsys):
     assert S.main(["--model", "classic", "--code", world["code"], "--dry_run"]) == 0
     assert "score_genome.py --all --device cuda" in capsys.readouterr().out
+
+
+def test_a_run_matched_by_two_rungs_patterns_is_refused(world, monkeypatch):
+    """The top rung's name (hm3plus) prefixes every other rung's: a pattern must not catch their runs too."""
+    monkeypatch.setitem(S.MODELS, "loose", dict(S.MODELS["fake"], runs="fake/ladder_{rung}*/*"))
+    world["run"]("D1_large", rung="hm3plus_n13199")
+    with pytest.raises(SystemExit, match="two rungs"):
+        S.finished_runs("loose", ["hm3plus_n13199", "hm3plus"])

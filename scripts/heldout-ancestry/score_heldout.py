@@ -29,7 +29,7 @@ MODELS = {
     "delphi": dict(runs="delphi/ladder_{rung}/*", cwd="Delphi", cmd=["-m", "dphi.score"], py=WDGP),
     "gln": dict(runs="gln/real_ladder_{rung}/*", cwd="GLN", cmd=["-m", "glnb.score"],
                 py="/mnt/sdg/robert/envs/gln/bin/python"),
-    "prsformer": dict(runs="prsformer/real_ladder/{rung}_*", cwd="PRSformer", cmd=["-m", "prsf.score"],
+    "prsformer": dict(runs="prsformer/real_ladder/{rung}_[lp][ir]*", cwd="PRSformer", cmd=["-m", "prsf.score"],
                       py="/mnt/sdg/robert/envs/prsformer/bin/python"),
     "widedeepgp": dict(runs="widedeepgp_ladder/{rung}_s*", cwd="DeepWideGP", cmd=["score_snapshots.py"], py=WDGP,
                        one_split=True, extra=["--snapshots", "best", "--batch_size", "256"]),
@@ -108,7 +108,10 @@ def score_run(model, run, code, device):
 
 def finished_runs(model, rungs):
     pats = [os.path.join(RUNS, MODELS[model]["runs"].format(rung=r)) for r in rungs]
-    return [r for p in pats for r in sorted(glob.glob(p)) if os.path.exists(os.path.join(r, "scores_val.csv"))]
+    runs = [r for p in pats for r in sorted(glob.glob(p)) if os.path.exists(os.path.join(r, "scores_val.csv"))]
+    if len(set(runs)) != len(runs):
+        raise SystemExit(f"{model}: a run matches two rungs' patterns")
+    return runs
 
 
 def main(argv=None):
