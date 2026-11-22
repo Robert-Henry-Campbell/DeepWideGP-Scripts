@@ -47,6 +47,8 @@ def env(code, pythonpath=()):
              KELEMEN_REPO=os.path.join(code, "KelemenMLP"), OMP_NUM_THREADS="4", MKL_NUM_THREADS="4",
              SYNTHETIC_DATA_DIR=os.path.join(ROOT, "data", "synthetic", "logs", "code_20261120"))
     e.pop("PYTHONPATH", None)
+    # the frozen copy sits inside the umbrella repository, so git would name its commit: name them as the chains do
+    e["SCPRS_CODE"] = e["GLN_CODE"] = ";".join(open(os.path.join(code, "COMMITS.txt")).read().split("\n")).strip(";")
     if pythonpath:
         e["PYTHONPATH"] = os.pathsep.join(os.path.join(code, p) for p in pythonpath)
     return e
