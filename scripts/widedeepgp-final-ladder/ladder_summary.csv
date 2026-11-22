@@ -1,0 +1,31 @@
+training_participants,model,seed,mean_tuning_auroc,source
+13199,WideDeepGP,1,0.6586997,runs/widedeepgp_ladder/hm3plus_n13199_s1/results.json
+13199,WideDeepGP,2,0.6589330,runs/widedeepgp_ladder/hm3plus_n13199_s2/results.json
+13199,WideDeepGP,3,0.6584355,runs/widedeepgp_ladder/hm3plus_n13199_s3/results.json
+13199,covariates only,,0.6598354,runs/widedeepgp_ladder/hm3plus_n13199_s1/scores_val.csv
+13199,ridge PRS + covariates,,0.6611,widedeepgp-blocks/results.md
+13199,logistic ridge twin,,0.6603,widedeepgp-blocks/results.md
+26287,WideDeepGP,1,0.6602395,runs/widedeepgp_ladder/hm3plus_n26287_s1/results.json
+26287,WideDeepGP,2,0.6608445,runs/widedeepgp_ladder/hm3plus_n26287_s2/results.json
+26287,WideDeepGP,3,0.6600339,runs/widedeepgp_ladder/hm3plus_n26287_s3/results.json
+26287,covariates only,,0.6613464,runs/widedeepgp_ladder/hm3plus_n26287_s1/scores_val.csv
+26287,ridge PRS + covariates,,0.6638,widedeepgp-blocks/results.md
+26287,logistic ridge twin,,0.6619,widedeepgp-blocks/results.md
+53498,WideDeepGP,1,0.6644558,runs/widedeepgp_ladder/hm3plus_n53498_s1/results.json
+53498,WideDeepGP,2,0.6654813,runs/widedeepgp_ladder/hm3plus_n53498_s2/results.json
+53498,WideDeepGP,3,0.6644531,runs/widedeepgp_ladder/hm3plus_n53498_s3/results.json
+53498,covariates only,,0.6620351,runs/widedeepgp_ladder/hm3plus_n53498_s1/scores_val.csv
+53498,ridge PRS + covariates,,0.6670,widedeepgp-blocks/results.md
+53498,logistic ridge twin,,0.6633,widedeepgp-blocks/results.md
+107743,WideDeepGP,1,0.6689794,runs/widedeepgp_ladder/hm3plus_n107743_s1/results.json
+107743,WideDeepGP,2,0.6689521,runs/widedeepgp_ladder/hm3plus_n107743_s2/results.json
+107743,WideDeepGP,3,0.6684443,runs/widedeepgp_ladder/hm3plus_n107743_s3/results.json
+107743,covariates only,,0.6624966,runs/widedeepgp_ladder/hm3plus_n107743_s1/scores_val.csv
+107743,ridge PRS + covariates,,0.6718,widedeepgp-blocks/results.md
+107743,logistic ridge twin,,0.6671,widedeepgp-blocks/results.md
+215872,WideDeepGP,1,0.6748781,runs/widedeepgp_ladder/hm3plus_s1/results.json
+215872,WideDeepGP,2,0.6743934,runs/widedeepgp_ladder/hm3plus_s2/results.json
+215872,WideDeepGP,3,0.6737167,runs/widedeepgp_ladder/hm3plus_s3/results.json
+215872,covariates only,,0.6627292,runs/widedeepgp_ladder/hm3plus_s1/scores_val.csv
+215872,ridge PRS + covariates,,0.6777,widedeepgp-blocks/results.md
+215872,logistic ridge twin,,0.6732,widedeepgp-blocks/results.md
