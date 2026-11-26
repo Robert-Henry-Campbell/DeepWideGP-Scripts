@@ -5,22 +5,32 @@ authors, and restructured the same day to his outline (Tables 1–4, Figure 1, h
 model was trained for it.
 - **`make_summary.py`** collects aggregate AUROCs from the run folders and the PGI arm into `figures/*.csv` and draws
   the figures.
-- **One new calculation**: the C+T PRS alone, scored on the code's training and validation parts
-  (`prs_alone_by_part.csv`). It reads the per-person PRS files under `data/` and the replication's split rule
-  (`inflation.py`: 15% validation, stratified, seed 333). It reproduces the recorded AUROCs on all GWAS people and on
-  the test people.
+- **Two new calculations.**
+  - The C+T PRS alone, scored on the code's training and validation parts (`prs_alone_by_part.csv`). It reads the
+    per-person PRS files under `data/` and the replication's split rule (`inflation.py`: 15% validation, stratified,
+    seed 333). It reproduces the recorded AUROCs on all GWAS people and on the test people.
+  - A C+T PRS from the random set's own HapMap3+ GWAS, for Table 4 (Robert's correction, 26 November: that table must
+    hold the people fixed). `runs/deepgp_replication_e11_cohort_gwas/run_ct_hm3plus.sh` clumps that GWAS with the
+    paper's flags (PLINK 2, p1 = p2 0.05, r² 0.7, 500 kb, LD from the same 34,690 training people), giving 41,431 lead
+    SNPs; `ct_hm3plus.py` scores every set member from the HapMap3+ genotype store (log OR × ALT dosage) and computes
+    AUROC by part, over-weighting and covariates' share exactly as `inflation.py`. Run on the all-SNP score, the same
+    code reproduces `inflation.json` (11.8×). Result: `ct_hm3plus.json`.
 - **Figure 1** is the replication's Figure 3, redrawn without the "PRS + covariates joined outside the GWAS" line and
   with the recipe named "PRS + cov".
 - **`results.md`** is the text, with tables filled from the CSVs.
 - **`DeepGP_E11_summary.docx`** is the same text, made with pandoc 2.9 and a styled reference document (the builder
   was a session script, not kept). From here on the Word file is meant to be edited by hand.
+- **The Google Slides deck** "DeepGP E11 replication: summary for the authors" (Robert's Drive, 26 November) holds
+  the same tables and figures, with the bullets in the speaker notes. It was built with python-pptx by a session
+  script (not kept) and converted by Drive.
 
 **Sources**
 - Paper numbers: the supplement in `runs/deepgp_replication_e11/paper/` and `../deepgp-replication/`.
 - Replication (Tables 2–6):
   - `runs/deepgp_replication_e11`: minor-allele runs and the PRS recipe;
   - `runs/deepgp_no_learning`: risk-allele runs and the test score after every pass;
-  - `runs/deepgp_replication_e11_cohort_gwas`: the cohort's own GWAS, LDpred2 and lassosum2, over-weighting;
+  - `runs/deepgp_replication_e11_cohort_gwas`: the cohort's own GWAS (all-SNP and HapMap3+), C+T from each, LDpred2
+    and lassosum2, over-weighting;
   - `runs/deepgp_replication`: atrial fibrillation;
   - `runs/tweaks/classic_e11_r07_balanced`: E11 at population prevalence;
   - `runs/nocov`: I10 without covariates.
@@ -50,9 +60,10 @@ model was trained for it.
 - The rerun with the paper's multi-source T2D definition (`runs/deepgp_replication_t2d`) logged its first GWAS step
   on 21 November and nothing after. It has no running process, its data folder is gone and it has no result.
 - E11's training-row PRS AUROC was not measured below the top rung.
-- Table 4's HapMap3+ and all-SNP rows differ in GWAS size as well as SNP count (215,872 against 34,690 people). Only
-  the random-subset rows hold the GWAS fixed. No C+T score was built from the cohort's own HapMap3+ GWAS, which would
-  hold the people fixed.
+- Table 4 compares two GWAS of the same 34,690 people. An earlier draft (commit 2b06711) compared the all-SNP GWAS
+  with the HapMap3+ GWAS of all 215,872 training people, which changed the people as well as the SNPs; those rows
+  stay in `snp_count.csv`, labelled, but are no longer in the table.
+- The paper's 13.3 million SNPs cannot be tested: our imputed files hold 7,813,490.
 - DeepGP's in-GWAS AUROCs for the model trained to completion come from the training log (averages over batches of
   64). Its genotype files were deleted on 21 November, so the whole parts cannot be re-scored.
 - Classic DeepGP's training AUROCs on the ladder were not recorded, only its tuning checks.

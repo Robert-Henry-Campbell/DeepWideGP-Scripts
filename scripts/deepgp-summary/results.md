@@ -96,34 +96,32 @@ How to read this table:
 
 ### Table 4. Does a larger SNP pool worsen the overfitting?
 
-The paper's GWAS tested 13.3 million SNPs; ours tested 1.26 million (HapMap3+) or 7.8 million (all imputed).
+Both GWAS were run on the random set's own 34,690 training people with the paper's PLINK 2 flags, and clumped the
+paper's way (p ≤ 0.05, r² 0.7, 500 kb). One tested the 1,258,200 HapMap3+ SNPs, the other all 7,813,490 imputed SNPs in
+our files. The paper's GWAS tested 13.3 million.
 
-| Run | People in the GWAS | SNPs in the GWAS | Lead SNPs in the PRS | Validation part (in the GWAS) | Test people (not in the GWAS) |
-|---|---|---|---|---|---|
-| PRS + cov, HapMap3+ GWAS | 215,872 | 1,258,200 | 47,341 | 0.930 | 0.655 |
-| PRS only, HapMap3+ GWAS | 215,872 | 1,258,200 | 47,341 | 0.915 | 0.602 |
-| PRS + cov, all-SNP GWAS | 34,690 | 7,813,490 | 98,440 | 0.995 | 0.659 |
-| PRS only, all-SNP GWAS | 34,690 | 7,813,490 | 98,440 | 0.983 | 0.578 |
-| PRS + cov, all-SNP GWAS, random 5% of the lead SNPs | 34,690 | 7,813,490 | 4,932 | 0.902 | 0.621 |
-| PRS + cov, all-SNP GWAS, random 10% of the lead SNPs | 34,690 | 7,813,490 | 9,718 | 0.946 | 0.628 |
-| PRS + cov, all-SNP GWAS, random 25% of the lead SNPs | 34,690 | 7,813,490 | 24,963 | 0.979 | 0.642 |
-| PRS + cov, all-SNP GWAS, random 50% of the lead SNPs | 34,690 | 7,813,490 | 49,058 | 0.990 | 0.653 |
-| PRS + cov, all-SNP GWAS, random 75% of the lead SNPs | 34,690 | 7,813,490 | 73,824 | 0.994 | 0.657 |
+| Run | SNPs in the GWAS | Lead SNPs in the PRS | Validation part (in the GWAS) | Test people (not in the GWAS) |
+|---|---|---|---|---|
+| PRS + cov, own HapMap3+ GWAS | 1,258,200 | 41,431 | 0.977 | 0.652 |
+| PRS only, own HapMap3+ GWAS | 1,258,200 | 41,431 | 0.954 | 0.575 |
+| PRS + cov, own all-SNP GWAS | 7,813,490 | 98,440 | 0.995 | 0.659 |
+| PRS only, own all-SNP GWAS | 7,813,490 | 98,440 | 0.983 | 0.578 |
+| PRS + cov, all-SNP GWAS, random 5% of the lead SNPs | 7,813,490 | 4,932 | 0.902 | 0.621 |
+| PRS + cov, all-SNP GWAS, random 10% of the lead SNPs | 7,813,490 | 9,718 | 0.946 | 0.628 |
+| PRS + cov, all-SNP GWAS, random 25% of the lead SNPs | 7,813,490 | 24,963 | 0.979 | 0.642 |
+| PRS + cov, all-SNP GWAS, random 50% of the lead SNPs | 7,813,490 | 49,058 | 0.990 | 0.653 |
+| PRS + cov, all-SNP GWAS, random 75% of the lead SNPs | 7,813,490 | 73,824 | 0.994 | 0.657 |
 
-- **The first four rows differ in two ways at once.** The all-SNP GWAS tested six times as many SNPs, but on a sixth as
-  many people (34,690 against 215,872). Its PRS overfits more (0.983 against 0.916 on the validation part) and does
-  worse alone on new people (0.578 against 0.602). This table cannot say which of the two differences did it.
-- **The subset rows hold the GWAS fixed and vary only the number of lead SNPs.**
-    - More SNPs widen the gap between inside and outside the GWAS (0.902 → 0.621 with 5% of the SNPs; 0.995 → 0.659
-    with all of them).
-    - But on new people the PRS + covariates gets better, not worse (0.621 → 0.659).
-    - The PRS's over-weighting stays at 11–12× throughout.
-- **So, on our data, a bigger SNP pool makes the PRS look better inside the GWAS without making it worse on new
-  people.** A smaller GWAS does make it worse.
-    - The paper's 13.3 million SNPs also gave about as many lead SNPs (about 100,000) as our 7.8 million (98,440).
-    - So its larger SNP pool alone is unlikely to explain its 0.60.
-- **A clean test would hold the people fixed:** a C+T score from a HapMap3+ GWAS of the same 34,690 people. Those GWAS
-  summary statistics exist but were never clumped and scored.
+- **More SNPs widen the overfitting inside the GWAS.** On the validation part, PRS alone goes from 0.954 to 0.983 and
+  PRS + covariates from 0.977 to 0.995. The recipe's over-weighting of the PRS rises from 9.6× to 11.8×.
+- **They do not lower AUROC on new people.** PRS alone 0.575 → 0.578; PRS + covariates 0.652 → 0.659.
+- **The subset rows hold the all-SNP GWAS fixed and vary only the number of lead SNPs.** Fewer SNPs lower test AUROC
+  (0.621 with 5% of them), and the over-weighting stays at 11–12× throughout.
+- **So a bigger SNP pool makes the PRS look better inside the GWAS without making it worse on new people.**
+    - The paper's 13.3 million SNPs gave about as many lead SNPs (about 100,000) as our 7.8 million (98,440).
+    - So its larger SNP pool alone is unlikely to explain its 0.60. We cannot test 13.3 million SNPs.
+- **Where the scores come from.** The HapMap3+ GWAS is the one that gave LDpred2-auto and lassosum2 their weights.
+  DeepGP's most faithful run took its SNPs from the all-SNP GWAS.
 
 <figure markdown="1">
 
@@ -146,7 +144,8 @@ paper's recipe). Scoring the test people changed nothing in training and chose n
     test people, who are outside it.
     - The over-weighting is the PRS's coefficient in the first fit divided by its coefficient in the second.
     - Results:
-      - C+T from the set's own GWAS (34,690 people): 6.99 against 0.59, so **11.8×**.
+      - C+T from the set's own all-SNP GWAS (34,690 people): 6.99 against 0.59, so **11.8×**.
+      - C+T from the set's own HapMap3+ GWAS (34,690 people): 4.60 against 0.48, so **9.6×**.
       - C+T from the GWAS of 215,872 people: 2.86 against 0.52, so **5.5×**.
       - LDpred2-auto from the set's own HapMap3+ GWAS: **5.8×**.
 - **Covariates' share of the score.**
@@ -155,7 +154,7 @@ paper's recipe). Scoring the test people changed nothing in training and chose n
     - The share is the variance of the covariate part divided by the variance of the whole score, across the test
     people.
     - The recipe leaves the covariates 28% of the score (12% with the GWAS of 215,872). A fit on the test people gives
-    them 83% (73%). LDpred2-auto: 21% against 67%.
+    them 83% (73%). C+T from the own HapMap3+ GWAS: 23% against 83%. LDpred2-auto: 21% against 67%.
     - The recipe's score is mostly PRS, and on new people the PRS is the weaker of the two.
 - **Note: the overfitting is even worse at our smallest training size (13,199 people).** There, LDpred2-auto scores
   0.997–1.000 on its own training people and 0.52–0.53 on new people, for hypertension (I10), diverticular disease (K57)

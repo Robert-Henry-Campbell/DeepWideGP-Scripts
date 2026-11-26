@@ -116,16 +116,23 @@ def overfit(pa):
               first215["test_auroc"]),
             r(215872, "DeepGP, risk allele, model kept", None, None, test(f"{RUNS}/deepgp_no_learning/compare_R.json"))]
     pd.DataFrame(rows).to_csv(f"{OUT}/e11_overfit.csv", index=False, float_format="%.4f")
+    ct = j(f"{c}/ct_hm3plus.json")   # C+T from the set's own HapMap3+ GWAS (ct_hm3plus.py, 26 Nov)
     snp = []
-    for gwas, n_snps, leads, v in ((215872, 1258200, 47341, big), (34690, 7813490, 98440, own)):
-        snp +=[{"run": "PRS + covariates", "gwas_people": gwas, "snps_in_gwas": n_snps, "lead_snps": leads,
-                 "validation_part": v["recipe_auroc"]["validation part"], "test": v["recipe_auroc"]["test"],
-                 "prs_overweighting": v["inflation"]},
-                {"run": "PRS alone", "gwas_people": gwas, "snps_in_gwas": n_snps, "lead_snps": leads,
-                 "validation_part": pa.loc[gwas, "validation_part"], "test": pa.loc[gwas, "test"]}]
+    for gw, people_n, n_snps, leads, v, va, te in (
+            ("own HapMap3+ GWAS", 34690, 1258200, ct["lead_snps"], ct, ct["prs_alone_auroc"]["validation part"],
+             ct["prs_alone_auroc"]["test"]),
+            ("own all-SNP GWAS", 34690, 7813490, 98440, own, pa.loc[34690, "validation_part"], pa.loc[34690, "test"]),
+            ("HapMap3+ GWAS of all 215,872 training people", 215872, 1258200, 47341, big,
+             pa.loc[215872, "validation_part"], pa.loc[215872, "test"])):
+        snp += [{"gwas": gw, "run": "PRS + covariates", "gwas_people": people_n, "snps_in_gwas": n_snps,
+                 "lead_snps": leads, "validation_part": v["recipe_auroc"]["validation part"],
+                 "test": v["recipe_auroc"]["test"], "prs_overweighting": v["inflation"]},
+                {"gwas": gw, "run": "PRS alone", "gwas_people": people_n, "snps_in_gwas": n_snps, "lead_snps": leads,
+                 "validation_part": va, "test": te}]
     for k, v in infl.items():
         if "random" in k:
-            snp.append({"run": f"PRS + covariates, random {k.split('random ')[1].split(' of')[0]} of the lead SNPs",
+            snp.append({"gwas": "own all-SNP GWAS",
+                        "run": f"PRS + covariates, random {k.split('random ')[1].split(' of')[0]} of the lead SNPs",
                         "gwas_people": 34690, "snps_in_gwas": 7813490,
                         "lead_snps": int(k.split("(")[-1].rstrip(")").replace(",", "")),
                         "validation_part": v["recipe_auroc"]["validation part"], "test": v["recipe_auroc"]["test"],
