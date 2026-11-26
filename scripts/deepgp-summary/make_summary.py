@@ -79,10 +79,12 @@ def ladder():
     return t, m.reset_index()
 
 
-def overfit():
-    """E11, 1:1 random-controls cohort: AUROC on the GWAS people and on new people, and the recipe's over-weighting."""
+def overfit(pa):
+    """E11, 1:1 random-controls cohort: AUROC on the GWAS people and on new people, the recipe's over-weighting, and the
+    same by GWAS and by number of lead SNPs (pa: PRS alone by part, from prs_alone_by_part)."""
     c = f"{RUNS}/deepgp_replication_e11_cohort_gwas"
-    infl, po, one = j(f"{c}/inflation.json")["prs"], j(f"{c}/pgi_overfit.json"), j(f"{c}/first_epoch.json")[0]
+    infl, po, one = j(f"{c}/inflation.json")["prs"], j(f"{c}/pgi_overfit.json"), j(f"{c}/first_epoch.json")[1]
+    assert one["when"] == "end of the first pass"
     kept = (0.995, 0.992)  # the checkpoint the code chose (pass 15), as recorded in that run's results.md
     first215 = j(f"{RUNS}/deepgp_no_learning/test_curve_R.json")[0]
     test = lambda path: j(path)["auroc"]["DeepGP, risk-allele dosages"]["auroc"]
@@ -97,26 +99,98 @@ def overfit():
                 "covariate_share_recipe": prs["covariate_share_recipe"] if prs else None,
                 "covariate_share_new_people": prs["covariate_share_on_new_people"] if prs else None}
 
-    rows = [r(34690, "C+T PRS alone", own["prs_alone_auroc"]["gwas people"], None, own["prs_alone_auroc"]["test"]),
+    alone = lambda g: (pa.loc[g, "training_part"], pa.loc[g, "validation_part"], pa.loc[g, "test"])
+    rows = [r(34690, "C+T PRS alone", *alone(34690)),
             r(34690, "C+T PRS + covariates, paper's recipe", *own["recipe_auroc"].values(), own),
             r(34690, "LDpred2-auto alone", *po["ldpred2_auto"]["score alone"].values()),
             r(34690, "LDpred2-auto + covariates, recipe", *po["ldpred2_auto"]["score + covariates"].values(), ld),
             r(34690, "lassosum2 alone", *las["score alone"].values()),
             r(34690, "lassosum2 + covariates, recipe", *las["score + covariates"].values()),
-            r(34690, "DeepGP, risk allele, first check (300 batches)", one["training part"], one["validation part"],
-              one["test"]),
-            r(34690, "DeepGP, risk allele, model kept (pass 15 of 25)", *kept, test(f"{c}/compare_R.json")),
+            r(34690, "DeepGP, risk allele, after one pass", one["training part"], one["validation part"], one["test"]),
+            r(34690, "DeepGP, risk allele, trained to completion (pass 15 of 25 kept)", *kept,
+              test(f"{c}/compare_R.json")),
             r(34690, "Covariates alone", *po["covariates alone"].values()),
-            r(215872, "C+T PRS alone", big["prs_alone_auroc"]["gwas people"], None, big["prs_alone_auroc"]["test"]),
+            r(215872, "C+T PRS alone", *alone(215872)),
             r(215872, "C+T PRS + covariates, paper's recipe", *big["recipe_auroc"].values(), big),
             r(215872, "DeepGP, risk allele, first pass", first215["train_auroc"], first215["val_auroc"],
               first215["test_auroc"]),
             r(215872, "DeepGP, risk allele, model kept", None, None, test(f"{RUNS}/deepgp_no_learning/compare_R.json"))]
     pd.DataFrame(rows).to_csv(f"{OUT}/e11_overfit.csv", index=False, float_format="%.4f")
+    snp = []
+    for gwas, n_snps, leads, v in ((215872, 1258200, 47341, big), (34690, 7813490, 98440, own)):
+        snp +=[{"run": "PRS + covariates", "gwas_people": gwas, "snps_in_gwas": n_snps, "lead_snps": leads,
+                 "validation_part": v["recipe_auroc"]["validation part"], "test": v["recipe_auroc"]["test"],
+                 "prs_overweighting": v["inflation"]},
+                {"run": "PRS alone", "gwas_people": gwas, "snps_in_gwas": n_snps, "lead_snps": leads,
+                 "validation_part": pa.loc[gwas, "validation_part"], "test": pa.loc[gwas, "test"]}]
+    for k, v in infl.items():
+        if "random" in k:
+            snp.append({"run": f"PRS + covariates, random {k.split('random ')[1].split(' of')[0]} of the lead SNPs",
+                        "gwas_people": 34690, "snps_in_gwas": 7813490,
+                        "lead_snps": int(k.split("(")[-1].rstrip(")").replace(",", "")),
+                        "validation_part": v["recipe_auroc"]["validation part"], "test": v["recipe_auroc"]["test"],
+                        "prs_overweighting": v["inflation"]})
+    pd.DataFrame(snp).to_csv(f"{OUT}/snp_count.csv", index=False, float_format="%.4f")
     ck = pd.DataFrame(j(f"{RUNS}/kelemen_mlp/ladder_prs/check_prs_inputs.json"))
     ck["training_people"] = ck.rung.map(RUNGS)
     ck[["training_people", "trait", "auroc_training_rows", "auroc_tuning"]].to_csv(
         f"{OUT}/ldpred2_in_sample_by_rung.csv", index=False, float_format="%.4f")
+
+
+def prs_alone_by_part():
+    """C+T PRS alone, AUROC on the code's training and validation parts (inflation.py's split) and on test people."""
+    from sklearn.metrics import roc_auc_score
+    from sklearn.model_selection import train_test_split
+    e11, cg = f"{ROOT}/data/deepgp_replication_e11", f"{ROOT}/data/deepgp_replication_e11_cohort_gwas"
+    t = pd.read_csv(f"{e11}/cohort/split_R.tsv", sep="\t", dtype={"IID": str})
+    t = pd.concat([t[t.split == "train"], t[t.split == "test"]]).reset_index(drop=True)
+    y, n_tr = t.y.to_numpy(), int((t.split == "train").sum())
+    tr, te = np.arange(n_tr), np.arange(n_tr, len(t))
+    fit, val = train_test_split(tr, test_size=0.15, shuffle=True, stratify=y[tr], random_state=333)
+    rows = []
+    for gwas, d in ((215872, e11), (34690, cg)):
+        p = np.load(f"{d}/prs_R.npz")
+        p = np.concatenate([p["train"], p["test"]])
+        rows.append({"gwas_people": gwas, **{k: roc_auc_score(y[r], p[r]) for k, r in
+                     (("all_gwas_people", tr), ("training_part", fit), ("validation_part", val), ("test", te))}})
+    pd.DataFrame(rows).to_csv(f"{OUT}/prs_alone_by_part.csv", index=False, float_format="%.4f")
+    return pd.DataFrame(rows).set_index("gwas_people")
+
+
+def fig_training_passes():
+    """The replication's Figure 3, without the join outside the GWAS and with the recipe named 'PRS + cov'."""
+    src = f"{SCRIPTS}/deepgp-replication/figures"
+    d = pd.read_csv(f"{src}/fig3.csv")
+    ref = pd.read_csv(f"{src}/fig3_references.csv").set_index("reference").test_auroc
+    ref = ref.drop("PRS + covariates, joined on people outside the GWAS").rename(
+        {"PRS + covariates, paper's recipe": "PRS + cov"})
+    d.to_csv(f"{OUT}/training_passes.csv", index=False)
+    ref.to_csv(f"{OUT}/training_passes_references.csv")
+    fig, (top, bot) = plt.subplots(2, 1, figsize=(89 * MM, 95 * MM), sharex=True, gridspec_kw={"hspace": 0.25})
+    chosen = int(d.loc[d.validation_auroc.idxmax(), "pass"])
+    top.plot(d["pass"], d.training_auroc_per_batch, color="#8a8984", marker="o", ms=2.5,
+             label="Training people (batch mean)")
+    top.plot(d["pass"], d.validation_auroc, color=BLUE, marker="o", ms=2.5, label="Validation people")
+    top.set_ylim(0.9, 1.0)
+    top.set_ylabel("AUROC, people in the GWAS")
+    top.legend(loc="upper left", handlelength=1.6)
+    for k, col in (("Covariates alone", "#8a8984"), ("PRS + cov", ORANGE)):
+        bot.axhline(ref[k], color=col, lw=0.8, ls=(0, (3, 2)))
+        bot.text(d["pass"].max() + 0.3, ref[k] + 0.0008, f"{k} {ref[k]:.3f}", va="bottom", ha="right", color=INK)
+    bot.plot(d["pass"], d.test_auroc, color=BLUE, marker="o", ms=2.5)
+    bot.axvline(chosen, color=MUTED, lw=0.5, ls=":")
+    bot.text(chosen + 0.3, 0.6905, f"pass the code\nkeeps ({chosen})", ha="left", va="bottom", color=MUTED)
+    bot.set_xticks([1, 5, 10, 15, 20])
+    bot.set_ylim(0.62, 0.70)
+    bot.set_ylabel("AUROC, new people")
+    bot.set_xlabel("Training pass")
+    bot.set_xlim(0.5, d["pass"].max() + 0.5)
+    for ax, s in ((top, "a"), (bot, "b")):
+        ax.text(-0.02, 1.02, s, transform=ax.transAxes, fontsize=8, fontweight="bold", ha="right", va="bottom")
+    fig.subplots_adjust(left=0.17, right=0.97, top=0.95, bottom=0.1)
+    for ext in ("pdf", "png"):
+        fig.savefig(f"{OUT}/fig_training_passes.{ext}", dpi=300)
+    plt.close(fig)
 
 
 def xaxis(ax, labels=True):
@@ -176,7 +250,8 @@ def fig_per_disease(t):
 if __name__ == "__main__":
     os.makedirs(OUT, exist_ok=True)
     t, m = ladder()
-    overfit()
+    overfit(prs_alone_by_part())
+    fig_training_passes()
     fig_means(m)
     fig_per_disease(t)
     print(m.round(4).to_string())

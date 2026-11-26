@@ -1,244 +1,167 @@
 # DeepGP on type 2 diabetes: our replication, and DeepGP across five training sizes
 
-*UK Biobank, application 15181. Compiled 26 November 2026. Aggregate results only. Every AUROC is measured on people
-outside every GWAS, with a 95% bootstrap interval where we have one. Tables and figure data: `figures/`; sources:
-`methods.md`.*
+*UK Biobank, application 15181. Compiled 26 November 2026. Aggregate results only. Code, tables and figure data:
+DeepWideGP-Scripts, branch `widening`, `scripts/deepgp-summary/`.*
 
-We reran the published DeepGP code to reproduce the paper's type 2 diabetes (T2D) result. This summary covers three
-things:
-
-- the design choices that reproduce the paper's DeepGP number;
-- a weakness of the linear PRS baseline when the GWAS is small;
-- how classic DeepGP and our WideDeepGP compare across five training sizes.
+We reran the published DeepGP code on UK Biobank to reproduce the paper's type 2 diabetes (T2D) result, using two
+1:1 case-control sets built from E11: one with random controls and one with controls matched on age and sex.
 
 ## In short
 
-- **The paper's DeepGP is reproduced only with 1:1 random controls and risk-allele dosages.** That setup gives
-  0.648–0.652 against the paper's 0.64.
-    - With minor-allele dosages, which is what the paper states, the network learns nothing when controls are matched
-    (0.500).
-    - With random controls and minor-allele dosages it reaches 0.625, below covariates alone (0.677).
-- **No single design reproduces the paper's PRS baseline (0.60) at the same time.** Built the paper's way, our PRS +
-  covariates scores 0.655–0.659 with random controls and 0.618 with matched controls.
-- **A PRS overfits the people its GWAS came from when the GWAS is small.** With 34,690 GWAS people it scores 0.95–1.00
-  on those people and 0.56–0.62 on new people.
-    - The paper's PRS + covariates regression, fitted on those same people, gives the PRS 6–12 times its proper weight.
-    - That pulls the combined score down to, or below, covariates alone.
-- **Classic DeepGP does not escape this in our runs.** It scores 0.99 on the GWAS people and 0.65 on new people.
-    - On our five training sizes (30 diseases, the same design) it falls well below covariates alone: by 0.093 on
-    average at 13,199 training people and by 0.042 at 215,872.
-    - WideDeepGP stays close to the C+T PRS + covariates, slightly below it.
-- **Two gaps.**
-    - We never ran DeepGP without covariates on E11.
-    - A rerun with the paper's multi-source diabetes definition stopped at its first GWAS step and has no result.
+- **1:1 random controls with risk-allele dosages reproduce the paper's DeepGP:** 0.648–0.652 against its 0.64.
+    - With minor-allele dosages, as the paper states, DeepGP learns nothing with matched controls (0.500) and scores
+    0.625 with random controls.
+    - With matched controls and risk-allele dosages it reaches 0.615.
+- **Our PRS + covariates baseline is higher than the paper's.** It scores 0.655–0.659 with random controls, against
+  the paper's 0.60.
+- **Small GWAS overfit.** With 34,690 people in the GWAS, every PRS scores 0.95–1.00 on those people and 0.56–0.62 on
+  new people.
+    - The paper's way of adding covariates then gives the PRS 6–12 times the weight that new people support.
+    - DeepGP, whose SNPs come from the same GWAS, scores 0.99 on the GWAS people and 0.65 on new people.
 
-## 1. Did we set DeepGP up the way the paper did?
+## 1. Our replication sets against the paper's
 
-### Table 1. The paper's type 2 diabetes results
+### Table 1. How our two E11 sets compare with the paper's T2D set
 
-| Design | Training people (cases) | Test people (cases) | DeepGP | PRS + covariates | Other baselines |
-|---|---|---|---|---|---|
-| 1:1 cases and controls (main Table 1) | 44,828 (22,414) | 7,912 (3,956) | **0.64** | **0.60** | LightGBM 0.61; CNN 0.64; dense network 0.64; SNP-level logistic regression 0.60; MLP 0.59; random forest 0.51 |
-| Population prevalence (Supp. Tables 2 and 5) | 309,830 (22,414) | 54,676 (3,956) | 0.673 (0.665–0.682) | 0.640 (0.631–0.650) | PRS-CSx + covariates 0.642 (0.634–0.651) |
+| Feature | Paper (T2D, 1:1) | Ours: 1:1, random controls | Ours: 1:1, controls matched on age and sex |
+|---|---|---|---|
+| Outcome | T2D from self-report, medication, HbA1c ≥ 6.5%, ICD-9 250 and ICD-10 E10–E14; type 1 excluded | E11 from hospital inpatient and death records | E11 from hospital inpatient and death records |
+| Population | European UK Biobank participants | Unrelated White British; withdrawn participants removed | Unrelated White British; withdrawn participants removed |
+| Training people (cases) | 44,828 (22,414) | 34,690 (17,345) | 34,690 (17,345) |
+| Test people (cases) | 7,912 (3,956) | 3,326 (1,663), from our tuning set; our main test set stays locked | 3,326 (1,663), the same cases as the random set |
+| 1:1 cases and controls, training and test | Yes; what controls were matched on is not stated | Yes; controls drawn at random | Yes; each control matched exactly on sex and year of age |
+| People in the GWAS | The training set | (a) The set's own 34,690 training people; (b) all 215,872 of our training people | All 215,872 of our training people |
+| GWAS fitted on training people only, not validation? | No: its validation folds sat inside the GWAS (the paper's limitations) | No: the code's 15% validation part sits inside the GWAS. Test people are outside | No: the same. Test people are outside |
+| SNPs in the GWAS | 13.3 million imputed | (a) 7,813,490 imputed; (b) 1,258,200 HapMap3+ | 1,258,200 HapMap3+ |
+| GWAS software and covariates | PLINK 2 logistic regression; sex, age, PC1–6 | (a) The paper's own PLINK script, unchanged; (b) REGENIE with birth year, sex, PC1–10 | REGENIE with birth year, sex, PC1–10 |
+| Clumping | p ≤ 0.05, r² 0.7, 500 kb | Same | Same |
+| Lead SNPs given to DeepGP and the PRS | About 100,000 | (a) 98,440; (b) 47,341 | 47,341 |
+| Dosages count | The minor allele (as stated) | Minor allele, and separately the risk allele | Minor allele, and separately the risk allele |
+| Covariates in DeepGP and the PRS model | Age, sex, PC1–6 | Same | Same |
+| Code and settings | Published code; T2D settings chosen by five-fold cross-validation | Published code (commit 48e841d) and its T2D settings, as given | Same as the random set |
+| People used for early stopping | Five-fold cross-validation inside the training set | A random 15% of the training people | A random 15% of the training people |
 
-The paper's setup:
+(a) is our most faithful replication; (b) is the GWAS used for the minor-allele run and the first risk-allele run.
 
-- **SNPs.** About 100,000 lead SNPs from 13.3 million imputed SNPs (GWAS p ≤ 0.05, clumped at r² 0.7 within 500 kb).
-- **Covariates.** Age, sex and the first six principal components.
-- **Dosages.** The text says each counts the minor allele.
-- **Controls.** "1:1"; what they were matched on is not stated.
-- **Covariates alone.** No AUROC is reported for T2D.
+## 2. Results
 
-### Table 2. Our DeepGP runs with minor-allele dosages (all with the covariates in the model)
+### Table 2. DeepGP and its comparators on the test people
 
-| Cohort | Training people (cases) | Test people (cases) | 1:1? | DeepGP | Covariates alone |
-|---|---|---|---|---|---|
-| Controls matched on age and sex | 34,690 (17,345) | 3,326 (1,663) | yes | 0.500 (0.480–0.518) | 0.519 |
-| same, early stopping off (30 passes) | | | | 0.522 (0.500–0.544) | |
-| same, with the Mamba gradient bug fixed | | | | 0.524 (0.503–0.542) | |
-| Random controls | 34,690 (17,345) | 3,326 (1,663) | yes | 0.625 (0.605–0.644) | 0.677 |
-| Population prevalence (our pipeline) | 215,872 (17,345) | 20,000 (1,663) | no; half-case batches | 0.667 | 0.670 |
-| Without covariates | not run for E11 | | | | |
+| Run | DeepGP AUROC | PRS + covariates (paper's recipe, same training people) | PRS alone | Covariates alone |
+|---|---|---|---|---|
+| **1. Paper: DeepGP, 1:1 (matching not stated)** | **0.64** | **0.60** | not reported | not reported |
+| 2. DeepGP, minor-allele dosages, 1:1 random controls; GWAS of 215,872 | 0.625 (0.605–0.644) | 0.655 (0.636–0.675) | 0.602 (0.583–0.623) | 0.677 (0.659–0.695) |
+| 3. DeepGP, risk-allele dosages, 1:1 random controls; GWAS of 215,872 | 0.652 (0.633–0.673) | 0.655 (0.636–0.675) | 0.602 (0.583–0.623) | 0.677 (0.659–0.695) |
+| **3b. DeepGP, risk-allele dosages, 1:1 random controls; the set's own GWAS (most faithful)** | **0.648 (0.629–0.666)** | **0.659 (0.642–0.679)** | **0.578 (0.560–0.599)** | **0.677 (0.659–0.695)** |
+| 4. DeepGP, risk-allele dosages, 1:1 matched on age and sex; GWAS of 215,872 | 0.615 (0.596–0.634) | 0.618 (0.600–0.638) | 0.618 (0.599–0.637) | 0.519 (0.498–0.539) |
+| 4b. DeepGP, minor-allele dosages, 1:1 matched on age and sex; GWAS of 215,872 | 0.500 (0.480–0.518) | 0.618 (0.600–0.638) | 0.618 (0.599–0.637) | 0.519 (0.498–0.539) |
 
 How to read this table:
 
-- **SNPs.** The 1:1 runs use 47,341 lead SNPs from our GWAS of all 215,872 training people (HapMap3+ SNPs, the
-  paper's clumping).
-- **The population-prevalence row** comes from our own pipeline:
-    - its SNPs count the reference-panel alternative allele, which, like the minor allele, is unrelated to risk
-    direction;
-    - it uses 12 covariates;
-    - it is scored on our 20,000-person tuning set;
-    - with risk-allele dosages the same design gives 0.665, against the paper's population-prevalence DeepGP of 0.673.
-- **Without covariates.** Our only classic DeepGP run without covariates is for hypertension (I10) at population
-  prevalence: 0.518, against 0.699 with covariates and 0.699 for covariates alone.
-- **Atrial fibrillation** (I48, minor allele, 1:1): DeepGP 0.493 with matched controls and 0.692 with random ones.
-  Covariates alone score 0.510 and 0.743; the paper reports 0.74.
+- **The people scored.** Every AUROC is on the test people, who are outside every GWAS; in brackets is the 95%
+  bootstrap interval. They come from our tuning set, the table our code calls "validation". Table 3 gives the code's
+  own validation part, which sits inside the GWAS.
+- **The PRS.** It is the paper's C+T score from the same lead SNPs: log odds ratio × dosage, summed. "PRS +
+  covariates" is the paper's recipe, a logistic regression fitted on the same training people as DeepGP.
+- **Matched controls** remove the age and sex signal (covariates alone 0.519), so everything above 0.5 in rows 4 and 4b
+  is genetic.
+- **Population prevalence**, for reference: the paper reports DeepGP 0.673 and PRS + covariates 0.640. Ours, with
+  risk-allele dosages on all 215,872 training people, scores 0.665 on our tuning set, against 0.670 for covariates
+  alone.
 
-### Table 3. Controls matched on age and sex: minor- and risk-allele dosages
+## 3. Small GWAS overfit
 
-| Dosages count the | DeepGP | PRS + covariates, paper's recipe | PRS + covariates, joined outside the GWAS | PRS alone | Covariates alone |
+### Table 3. AUROC inside and outside the GWAS (the random set's own GWAS of 34,690 people)
+
+| Model | Training part (in the GWAS; 29,486) | Validation part (in the GWAS; 5,204) | Test people (not in the GWAS; 3,326) |
+|---|---|---|---|
+| C+T PRS alone | 0.984 | 0.983 | 0.578 |
+| C+T PRS + covariates (paper's recipe) | 0.995 | 0.995 | 0.659 |
+| LDpred2-auto alone | 0.950 | 0.950 | 0.621 |
+| LDpred2-auto + covariates (recipe) | 0.970 | 0.971 | 0.686 |
+| lassosum2 alone (penalty chosen on the validation part) | 0.999 | 0.999 | 0.563 |
+| lassosum2 + covariates (recipe) | 1.000 | 1.000 | 0.657 |
+| **DeepGP, risk allele, after one pass** | 0.993 | 0.990 | 0.646 |
+| **DeepGP, risk allele, trained to completion (stopped at pass 25; pass 15 kept)** | 0.995\* | 0.992\* | 0.648 |
+| Covariates alone | 0.652 | 0.659 | 0.678 |
+
+\* From the training log, averaged over batches of 64. The other DeepGP numbers score each whole part.
+
+- **Covariates alone** score about the same everywhere (0.65–0.68). Every genetic model scores 0.95–1.00 inside the
+  GWAS and 0.56–0.69 outside it.
+- **DeepGP after one pass already matches DeepGP trained to completion** on new people (0.646 against 0.648). The rest
+  of training raises it only inside the GWAS.
+- **LDpred2-auto and lassosum2** use a GWAS of the same people on HapMap3+ SNPs, fitted with our PGI arm's code.
+  lassosum2's penalty was chosen on the validation part, as the code would.
+
+### Table 4. Does a larger SNP pool worsen the overfitting?
+
+The paper's GWAS tested 13.3 million SNPs; ours tested 1.26 million (HapMap3+) or 7.8 million (all imputed).
+
+| Run | People in the GWAS | SNPs in the GWAS | Lead SNPs in the PRS | Validation part (in the GWAS) | Test people (not in the GWAS) |
 |---|---|---|---|---|---|
-| minor allele | 0.500 (0.480–0.518) | 0.618 (0.600–0.638) | 0.613 (0.594–0.634) | 0.618 (0.599–0.637) | 0.519 (0.498–0.539) |
-| risk allele | 0.615 (0.596–0.634) | same | same | same | same |
+| PRS + cov, HapMap3+ GWAS | 215,872 | 1,258,200 | 47,341 | 0.930 | 0.655 |
+| PRS only, HapMap3+ GWAS | 215,872 | 1,258,200 | 47,341 | 0.915 | 0.602 |
+| PRS + cov, all-SNP GWAS | 34,690 | 7,813,490 | 98,440 | 0.995 | 0.659 |
+| PRS only, all-SNP GWAS | 34,690 | 7,813,490 | 98,440 | 0.983 | 0.578 |
+| PRS + cov, all-SNP GWAS, random 5% of the lead SNPs | 34,690 | 7,813,490 | 4,932 | 0.902 | 0.621 |
+| PRS + cov, all-SNP GWAS, random 10% of the lead SNPs | 34,690 | 7,813,490 | 9,718 | 0.946 | 0.628 |
+| PRS + cov, all-SNP GWAS, random 25% of the lead SNPs | 34,690 | 7,813,490 | 24,963 | 0.979 | 0.642 |
+| PRS + cov, all-SNP GWAS, random 50% of the lead SNPs | 34,690 | 7,813,490 | 49,058 | 0.990 | 0.653 |
+| PRS + cov, all-SNP GWAS, random 75% of the lead SNPs | 34,690 | 7,813,490 | 73,824 | 0.994 | 0.657 |
 
-- **Matching removes the age and sex signal** (covariates alone 0.519), so everything above 0.5 here is genetic.
-- **Risk alleles are what let the network learn.** It reaches 0.615, close to the PRS (0.618).
-- **A matched design does not reach the paper's 0.64 on our data**, even with risk alleles.
-
-### Table 4. Our most faithful replication
-
-The design: 1:1 random controls; a GWAS of the cohort's own training people on all imputed SNPs; risk-allele dosages;
-the published code and settings.
-
-| Model | Test AUROC (95% interval) | Paper |
-|---|---|---|
-| **DeepGP, risk-allele dosages** | **0.648 (0.629–0.666)** | 0.64 |
-| PRS + covariates, paper's recipe (logistic regression fitted on the GWAS people) | 0.659 (0.642–0.679) | 0.60 |
-| PRS alone (no covariates) | 0.578 (0.560–0.599) | not reported |
-| PRS + covariates, joined on people outside the GWAS (5-fold) | 0.690 (0.673–0.708) | not reported |
-| Covariates alone | 0.677 (0.659–0.695) | not reported |
-
-DeepGP minus the recipe: −0.012 (−0.020 to −0.003). Training 34,690 people (17,345 cases); test 3,326 people (1,663
-cases).
-
-**What matched the paper**
-
-- **Code.** The published repository (github.com/tndrg/DeepGP, commit 48e841d). We added three patches so it runs
-  with a newer Mamba library; none changes any computation.
-- **Settings.** The published T2D configuration (Supp. Table 7): batch 64, width 32, one Mamba block, four attention
-  heads, two dense layers, dropout 0.2, learning rate 7 × 10⁻⁴, weight decay 10⁻⁴.
-- **Covariates.** Age, sex and the first six principal components.
-- **GWAS.** The paper's own PLINK script, unchanged, run on the training people only. As the paper's limitations note
-  for its own GWAS, these include the people the code later holds out for validation. Clumping at p ≤ 0.05, r² 0.7,
-  500 kb gives 98,440 lead SNPs (paper: about 100,000).
-- **Balance.** 1:1 cases and controls, in training and in test.
-- **Batches.** The code shuffles the 1:1 cohort, so each batch of 64 is half cases on average, not exactly 32 + 32.
-
-**Our reading where the paper is silent or differs**
-
-- **Controls** were drawn at random. The paper does not say what it matched on, and matched controls do not reproduce
-  it (Table 3).
-- **Dosages** count the risk allele: the allele whose odds ratio in the GWAS is above 1. The paper says minor allele,
-  but with minor alleles the network does not learn (Tables 2 and 3).
-
-**What differed from the paper**
-
-- **Outcome: E11 from hospital and death records**, not the paper's definition (self-report, medication,
-  HbA1c ≥ 6.5%, ICD-9 250, ICD-10 E10–E14, type 1 excluded).
-    - Our cohort has 17,345 training cases (77% of the paper's 22,414) and 1,663 test cases (42% of its 3,956).
-    - The test people come from our 20,000-person tuning set, because our main test set stays locked until the end of
-    the study.
-    - On the same people, the paper's definition would give 19,467 training cases (17,200 of them E11) and 1,867 test
-    cases. Two of its fields, 2443 and 4041, are not in our data.
-    - A rerun with that definition started on 21 November but stopped at its first GWAS step, with no result.
-- **SNPs.** Drawn from 7.8 million imputed SNPs, not 13.3 million.
-- **One network**, with seed 33 (fixed in the code). We ran no five-fold search of settings.
-- **Early stopping: the code's own rule.**
-    - It checks every 300 batches on a random 15% of the training people (inside the GWAS) and scores AUROC as the
-    average over batches of 64.
-    - It stops after 10 checks without improvement, or at 30 passes, and keeps the best check.
-    - The paper says only "early stopping". Our run stopped at pass 25 and kept pass 15.
-- **Were we undertraining? No.**
-    - On new people, AUROC was already 0.649 after the first 300 batches and 0.646 after one pass, against 0.648 for
-    the model kept.
-    - In a rerun scored on new people after every pass, it never rose after pass 2 (Figure 1).
-    - The problem is the reverse: the validation people sit inside the GWAS and score 0.93–0.99 from the first check,
-    so the rule cannot tell a good pass from a bad one.
-    - With minor-allele dosages the network was still on its starting plateau when it stopped at pass 22. Run to pass
-    30 it reached only 0.522.
+- **The first four rows differ in two ways at once.** The all-SNP GWAS tested six times as many SNPs, but on a sixth as
+  many people (34,690 against 215,872). Its PRS overfits more (0.983 against 0.916 on the validation part) and does
+  worse alone on new people (0.578 against 0.602). This table cannot say which of the two differences did it.
+- **The subset rows hold the GWAS fixed and vary only the number of lead SNPs.**
+    - More SNPs widen the gap between inside and outside the GWAS (0.902 → 0.621 with 5% of the SNPs; 0.995 → 0.659
+    with all of them).
+    - But on new people the PRS + covariates gets better, not worse (0.621 → 0.659).
+    - The PRS's over-weighting stays at 11–12× throughout.
+- **So, on our data, a bigger SNP pool makes the PRS look better inside the GWAS without making it worse on new
+  people.** A smaller GWAS does make it worse.
+    - The paper's 13.3 million SNPs also gave about as many lead SNPs (about 100,000) as our 7.8 million (98,440).
+    - So its larger SNP pool alone is unlikely to explain its 0.60.
+- **A clean test would hold the people fixed:** a C+T score from a HapMap3+ GWAS of the same 34,690 people. Those GWAS
+  summary statistics exist but were never clumped and scored.
 
 <figure markdown="1">
 
-![Risk-allele DeepGP, AUROC by training pass](../deepgp-replication/figures/fig3_training_passes.png)
+![Risk-allele DeepGP, AUROC by training pass](figures/fig_training_passes.png)
 
-<figcaption><strong>Figure 1. More training does not help on new people.</strong> Risk-allele DeepGP on the 1:1
-random-controls cohort (GWAS of 215,872 people), rerun with the new people scored after every pass. <strong>a</strong>, AUROC on
-training and validation people, both inside the GWAS. <strong>b</strong>, AUROC on new people, with the pass the code keeps and
-three reference lines. Scoring the new people changed nothing in training and chose nothing. From the replication
-write-up (<code>../deepgp-replication/</code>).</figcaption>
+<figcaption><strong>Figure 1. Validation inside the GWAS cannot see the overfitting, and more training does not help
+on new people.</strong> Risk-allele DeepGP on the 1:1 random-controls set (GWAS of 215,872 people), rerun with the
+test people scored after every pass. <strong>a</strong>, AUROC on training and validation people, both inside the
+GWAS. <strong>b</strong>, AUROC on the test people, with the pass the code keeps, covariates alone and PRS + cov (the
+paper's recipe). Scoring the test people changed nothing in training and chose nothing. Data:
+<code>figures/training_passes.csv</code>.</figcaption>
 </figure>
 
-## 2. Where the linear PRS breaks: small GWAS
+### How we measured the PRS over-weighting and the covariates' share of the score
 
-### Table 5. Cohort's own GWAS (34,690 people): AUROC on the GWAS people and on new people
+- **PRS over-weighting.**
+    - We fit the paper's recipe twice: a logistic regression of the outcome on the PRS, sex, age and PC1–6, with every
+    input standardised by the training people's mean and SD (scikit-learn defaults).
+    - The first fit uses the training people, as the paper does; they are all inside the GWAS. The second fit uses the
+    test people, who are outside it.
+    - The over-weighting is the PRS's coefficient in the first fit divided by its coefficient in the second.
+    - Results:
+      - C+T from the set's own GWAS (34,690 people): 6.99 against 0.59, so **11.8×**.
+      - C+T from the GWAS of 215,872 people: 2.86 against 0.52, so **5.5×**.
+      - LDpred2-auto from the set's own HapMap3+ GWAS: **5.8×**.
+- **Covariates' share of the score.**
+    - For each fit we compute every test person's score (the regression's linear predictor) and its covariate part (the
+    same sum without the PRS term).
+    - The share is the variance of the covariate part divided by the variance of the whole score, across the test
+    people.
+    - The recipe leaves the covariates 28% of the score (12% with the GWAS of 215,872). A fit on the test people gives
+    them 83% (73%). LDpred2-auto: 21% against 67%.
+    - The recipe's score is mostly PRS, and on new people the PRS is the weaker of the two.
+- **Note: the overfitting is even worse at our smallest training size (13,199 people).** There, LDpred2-auto scores
+  0.997–1.000 on its own training people and 0.52–0.53 on new people, for hypertension (I10), diverticular disease (K57)
+  and atrial fibrillation (I48). E11 was not measured at that size.
 
-| Model | GWAS people, training part (29,486) | GWAS people, validation part (5,204) | New people (3,326) | Drop | PRS over-weighting in the recipe | Covariates' share of the score: recipe → fitted on new people |
-|---|---|---|---|---|---|---|
-| C+T PRS alone | 0.984 (all 34,690) | | 0.578 | −0.41 | | |
-| C+T PRS + covariates, paper's recipe | 0.995 | 0.995 | 0.659 | −0.34 | **11.8×** | 28% → 83% |
-| LDpred2-auto alone | 0.950 | 0.950 | 0.621 | −0.33 | | |
-| LDpred2-auto + covariates, recipe | 0.970 | 0.971 | **0.686** | −0.28 | **5.8×** | 21% → 67% |
-| lassosum2 alone (penalty chosen on the validation part) | 0.999 | 0.999 | 0.563 | −0.44 | | |
-| lassosum2 + covariates, recipe | 1.000 | 1.000 | 0.657 | −0.34 | not computed | |
-| **DeepGP, risk allele, after 300 batches** | 0.992 | 0.989 | 0.649 | −0.34 | | |
-| **DeepGP, risk allele, model kept (pass 15)** | 0.995 (mean over batches) | 0.992 | 0.648 | −0.35 | | |
-| Covariates alone | 0.652 | 0.659 | 0.678 | +0.03 | | |
-
-How to read the columns:
-
-- **Drop** = AUROC on new people minus AUROC on the training part.
-- **PRS over-weighting** = the PRS's weight in the recipe divided by the weight a regression fitted on the new people
-  gives it.
-- **Covariates' share** = the share of the combined score's spread that comes from the covariates.
-- **LDpred2-auto and lassosum2** use a GWAS of the same people on HapMap3+ SNPs, fitted with our PGI arm's code.
-
-### Table 6. A larger GWAS overfits less (same 1:1 random-controls cohort, same new people)
-
-| GWAS people | Lead SNPs | C+T PRS alone: GWAS people → new people | Recipe: GWAS people → new people | PRS over-weighting | Risk-allele DeepGP: GWAS people → new people |
-|---|---|---|---|---|---|
-| 34,690 (the cohort's own GWAS, all imputed SNPs) | 98,440 | 0.984 → 0.578 | 0.995 → 0.659 | 11.8× | 0.995 → 0.648 |
-| 215,872 (all our training people, HapMap3+) | 47,341 | 0.917 → 0.602 | 0.931 → 0.655 | 5.5× | 0.92–0.96 → 0.652 |
-
-- **DeepGP's in-GWAS AUROC** is the mean over training batches at the pass the code kept (34,690) or across passes
-  (215,872).
-- **Same over-weighting with fewer SNPs.** Random 5–75% subsets of the 98,440 lead SNPs give 11.3–12.4×, so the size
-  of the GWAS sets it, not the number of SNPs.
-- **Population prevalence** (GWAS of 215,872, scored on our 20,000 tuning people). On the training people versus the
-  new people:
-    - C+T scores 0.917 versus 0.615;
-    - LDpred2-auto scores 0.917 versus 0.651;
-    - lassosum2 scores 0.903 versus 0.630.
-    - The C+T recipe gives 0.666, against 0.669 for covariates alone.
-
-### Table 7. The same pattern at every training size (LDpred2-auto alone, three other diseases)
-
-| Training people | I10 hypertension | K57 diverticular disease | I48 atrial fibrillation |
-|---|---|---|---|
-| 13,199 | 0.997 → 0.533 | 1.000 → 0.524 | 1.000 → 0.529 |
-| 26,287 | 0.980 → 0.548 | 0.994 → 0.533 | 0.996 → 0.556 |
-| 53,498 | 0.935 → 0.572 | 0.963 → 0.554 | 0.950 → 0.579 |
-| 107,743 | 0.871 → 0.596 | 0.906 → 0.581 | 0.881 → 0.605 |
-| 215,872 | 0.812 → 0.615 | 0.862 → 0.602 | 0.812 → 0.621 |
-
-AUROC on the rung's training people (all in its GWAS) → on our 20,000 tuning people (outside it). E11 was not scored
-on training people below the top rung; at the top rung it gives 0.917 → 0.651.
-
-**What this shows**
-
-- **Below about 50,000 GWAS people, every linear PRS overfits the people it was fitted on.**
-    - It scores 0.95–1.00 on them and 0.53–0.62 on new people.
-    - Fitting the PRS + covariates regression on those people, as the paper's recipe does, gives the PRS 6–12 times its
-    proper weight. The covariates' share of the score falls from 67–83% to 21–28%.
-    - The combined score ends at or below covariates alone: C+T 0.659 and lassosum2 0.657, against 0.678. Only
-    LDpred2-auto clears it (0.686).
-- **A bigger GWAS halves the over-weighting** (11.8× at 34,690 people, 5.5× at 215,872). Across our ladder, LDpred2's
-  AUROC on its own training people falls from 1.00 to 0.81–0.86, while on new people it rises from 0.53 to 0.60–0.62.
-- **Do modern methods overfit harder than C+T? For lassosum2, yes; for LDpred2-auto, no.**
-    - lassosum2, tuned on validation people inside the GWAS: 0.999 → 0.563, against C+T's 0.984 → 0.578.
-    - LDpred2-auto overfits less (0.950 → 0.621). It is the only genetic model whose recipe score beats covariates alone.
-- **Classic DeepGP does not avoid this in our runs.**
-    - It loses as much between the GWAS people and new people as the recipe does (0.995 → 0.648, against 0.995 → 0.659),
-    because its SNPs and their risk direction come from the same GWAS.
-    - On our five training sizes it falls further below covariates alone than any PRS does (section 3).
-- **The opening for DeepGP, not yet shown.**
-    - The weakness to exploit is that a PRS fitted on its own GWAS people over-weights genetics against covariates.
-    - A model trained on people outside the GWAS could avoid it: for example, DeepGP given SNPs from a GWAS of one half of
-    the training set and trained on the other half.
-    - The linear version of that fix, joining the PRS to the covariates on people outside the GWAS, already reaches
-    0.690. That is the bar to beat.
-
-## 3. Five training sizes, 30 diseases (our main study, separate from the replication)
+## 4. Five training sizes, 30 diseases (our main study, separate from the replication)
 
 The comparison setup:
 
@@ -254,7 +177,7 @@ The comparison setup:
   fitted on the tuning people, our shared comparison rule. Its own covariates-only fit gives 0.6653, so compare gains
   over covariates rather than raw AUROCs.
 
-### Table 8. Mean tuning AUROC over the 30 diseases (gain over covariates alone in brackets)
+### Table 5. Mean tuning AUROC over the 30 diseases (gain over covariates alone in brackets)
 
 | Training people | Covariates alone | Classic DeepGP | WideDeepGP (3 seeds, mean ± SD) | Ridge PRS + covariates (WideDeepGP's linear twin) | C+T PRS + covariates (own covariates 0.6653) | Classic above covariates | WideDeepGP above covariates |
 |---|---|---|---|---|---|---|---|
@@ -265,11 +188,13 @@ The comparison setup:
 | 215,872 | 0.6627 | 0.6204 (−0.042) | 0.6743 ± 0.0006 (+0.012) | 0.6777 (+0.015) | 0.6819 (+0.017) | 2 of 30 | 28 of 30 |
 
 - **Classic DeepGP is below covariates alone for 28–30 of the 30 diseases at every size.**
-    - The deficit is largest where age and sex predict well: hypotension, osteoporosis, kidney failure, heart attack,
-    heart failure.
-    - It shrinks as the GWAS grows.
-    - This is the pattern the over-weighted PRS recipe shows (section 2). Our reading: trained on the people its GWAS
-    came from, the network leans on SNPs that look strong in that sample and under-uses the covariates.
+- **Like for like, it matches the replication.** The top-size E11 model, scored on the replication's 3,326 test
+  people, gives 0.656, against 0.652 for the replication run (covariates alone 0.679 and 0.677).
+- **The lower numbers here come from three things:**
+    - smaller GWAS at the smaller sizes (E11 falls from 0.665 to 0.561);
+    - diseases that age and sex predict well, such as hypotension (0.574 against 0.691 for covariates alone);
+    - possibly the half-case batches, which is untested. They show each case many times at small sizes (about 85 times
+    for the kept model at 13,199), and there the network gives most new people near-certain scores.
 - **WideDeepGP beats classic DeepGP for all 30 diseases at every size.**
     - It beats covariates alone from 53,498 people up.
     - It stays below the C+T and ridge PRS + covariates. At the top size it reaches 70% of C+T's gain over covariates
@@ -292,7 +217,53 @@ Data: <code>figures/ladder_means.csv</code>.</figcaption>
 cases. The y axis is shared across panels. Data: <code>figures/ladder_per_disease.csv</code>.</figcaption>
 </figure>
 
-### Table 9. Per disease, tuning AUROC
+### How WideDeepGP differs from classic DeepGP
+
+- **Which SNPs.**
+    - Classic: one model per disease, on the 30,000–58,000 lead SNPs that disease's GWAS picks (p ≤ 0.05, clumped at
+    r² 0.7 within 500 kb). Each SNP counts its risk allele.
+    - WideDeepGP: one model for all 30 diseases, on all 1,258,200 HapMap3+ SNPs, with no selection.
+- **First layer: what a SNP contributes.**
+    - Classic: every SNP on a chromosome passes through the same small filter, three neighbouring SNPs at a time. SNPs
+    are told apart only by a fixed code for their base-pair position, so no SNP has a weight of its own.
+    - WideDeepGP: every SNP has its own 32 numbers, taken from a ridge regression of all 30 diseases on the SNPs (the
+    "30-disease ridge"):
+      - the ridge is fitted within each LD block, on the disease labels with the covariates' linear effect removed;
+      - 30 diseases × 3 penalties give 90 weights per SNP, compressed to 32;
+      - it is cross-fitted: five copies, each fitted without one fifth of the training people, and each person is scored
+      by a copy that never saw them;
+      - the layer is fixed, not trained.
+- **Grouping.**
+    - Classic: SNPs are grouped by chromosome, and each chromosome's SNPs are averaged into one vector.
+    - WideDeepGP: each person's dosages times their SNPs' numbers are summed within each of the 431 LD blocks of Privé et
+    al. That gives one vector of 32 numbers per block, plus a learned label for each block and chromosome.
+- **Mixer.**
+    - Classic: a Mamba (state-space) layer runs along each chromosome's SNPs, then attention runs across the 22
+    chromosome vectors and a covariate vector.
+    - WideDeepGP: a small transformer (two layers, width 32, four heads) lets the 431 block vectors and a covariate token
+    attend to one another.
+- **Output.**
+    - Classic: one output, for one disease.
+    - WideDeepGP: the average of the tokens, beside the covariates, goes into a shared layer of 256. A small head per
+    disease then gives 30 outputs.
+- **Training.**
+    - Classic: the paper's T2D settings for every disease, with half-case batches.
+    - WideDeepGP: shuffled batches at population prevalence, with each disease's loss scaled by its prevalence. One
+    setting, chosen at the top size, is used for all sizes.
+    - Trained parameters: about 0.46 million per disease for classic DeepGP, and 0.32 million for WideDeepGP (plus a
+    fixed table of 201 million numbers).
+
+## Questions for the authors
+
+- Which allele did the dosages count?
+- How were the 1:1 controls chosen: at random, or matched on something?
+- Was the balanced analysis's GWAS run on the balanced training set?
+- How was the PRS + covariates baseline fitted? Fitted on the GWAS people, ours gives 0.659 with random controls, not
+  0.60.
+- Was the reported model one network, one fold's network, or an average of five?
+- What is the covariates-only AUROC for T2D? Supplementary Figure 6 does not label the diseases.
+
+## Appendix. Table 6: tuning AUROC per disease, at each training size
 
 Columns:
 
@@ -494,49 +465,3 @@ Columns:
 | **Mean** |  | **0.660** | **0.567** | **0.659** | **0.668** | **0.665** |
 
 </details>
-
-### How WideDeepGP differs from classic DeepGP
-
-- **Which SNPs.**
-    - Classic: one model per disease, on the 30,000–58,000 lead SNPs that disease's GWAS picks (p ≤ 0.05, clumped at
-    r² 0.7 within 500 kb). Each SNP counts its risk allele.
-    - WideDeepGP: one model for all 30 diseases, on all 1,258,200 HapMap3+ SNPs, with no selection.
-- **First layer: what a SNP contributes.**
-    - Classic: every SNP on a chromosome passes through the same small filter, three neighbouring SNPs at a time. SNPs
-    are told apart only by a fixed code for their base-pair position, so no SNP has a weight of its own.
-    - WideDeepGP: every SNP has its own 32 numbers, taken from a ridge regression of all 30 diseases on the SNPs (the
-    "30-disease ridge"):
-    - the ridge is fitted within each LD block, on the disease labels with the covariates' linear effect removed;
-    - 30 diseases × 3 penalties give 90 weights per SNP, compressed to 32;
-    - it is cross-fitted: five copies, each fitted without one fifth of the training people, and each person is scored
-      by a copy that never saw them;
-    - the layer is fixed, not trained.
-- **Grouping.**
-    - Classic: SNPs are grouped by chromosome, and each chromosome's SNPs are averaged into one vector.
-    - WideDeepGP: each person's dosages times their SNPs' numbers are summed within each of the 431 LD blocks of Privé et
-    al. That gives one vector of 32 numbers per block, plus a learned label for each block and chromosome.
-- **Mixer.**
-    - Classic: a Mamba (state-space) layer runs along each chromosome's SNPs, then attention runs across the 22
-    chromosome vectors and a covariate vector.
-    - WideDeepGP: a small transformer (two layers, width 32, four heads) lets the 431 block vectors and a covariate token
-    attend to one another.
-- **Output.**
-    - Classic: one output, for one disease.
-    - WideDeepGP: the average of the tokens, beside the covariates, goes into a shared layer of 256. A small head per
-    disease then gives 30 outputs.
-- **Training.**
-    - Classic: the paper's T2D settings for every disease, with half-case batches.
-    - WideDeepGP: shuffled batches at population prevalence, with each disease's loss scaled by its prevalence. One
-    setting, chosen at the top size, is used for all sizes.
-    - Trained parameters: about 0.46 million per disease for classic DeepGP, and 0.32 million for WideDeepGP (plus a
-    fixed table of 201 million numbers).
-
-## Questions for the authors
-
-- Which allele did the dosages count?
-- How were the 1:1 controls chosen: at random, or matched on something?
-- Was the balanced analysis's GWAS run on the balanced training set?
-- How was the PRS + covariates baseline fitted? Fitted on the GWAS people, ours gives 0.659 with random controls, not
-  0.60.
-- Was the reported model one network, one fold's network, or an average of five?
-- What is the covariates-only AUROC for T2D? Supplementary Figure 6 does not label the diseases.

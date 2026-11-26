@@ -1,9 +1,19 @@
 # DeepGP summary for its authors: methods
 
 **What this is.** A summary of work already done, written on 26 November 2026 at Robert's request for the DeepGP
-authors. No model was trained for it. `make_summary.py` collects aggregate AUROCs from the run folders and the PGI arm
-into `figures/*.csv` and draws Figures 2 and 3. Figure 1 is the replication's `fig3_training_passes`. `results.md`
-is the text, with tables filled from the CSVs.
+authors, and restructured the same day to his outline (Tables 1–4, Figure 1, how the over-weighting is measured). No
+model was trained for it.
+- **`make_summary.py`** collects aggregate AUROCs from the run folders and the PGI arm into `figures/*.csv` and draws
+  the figures.
+- **One new calculation**: the C+T PRS alone, scored on the code's training and validation parts
+  (`prs_alone_by_part.csv`). It reads the per-person PRS files under `data/` and the replication's split rule
+  (`inflation.py`: 15% validation, stratified, seed 333). It reproduces the recorded AUROCs on all GWAS people and on
+  the test people.
+- **Figure 1** is the replication's Figure 3, redrawn without the "PRS + covariates joined outside the GWAS" line and
+  with the recipe named "PRS + cov".
+- **`results.md`** is the text, with tables filled from the CSVs.
+- **`DeepGP_E11_summary.docx`** is the same text, made with pandoc 2.9 and a styled reference document (the builder
+  was a session script, not kept). From here on the Word file is meant to be edited by hand.
 
 **Sources**
 - Paper numbers: the supplement in `runs/deepgp_replication_e11/paper/` and `../deepgp-replication/`.
@@ -40,6 +50,11 @@ is the text, with tables filled from the CSVs.
 - The rerun with the paper's multi-source T2D definition (`runs/deepgp_replication_t2d`) logged its first GWAS step
   on 21 November and nothing after. It has no running process, its data folder is gone and it has no result.
 - E11's training-row PRS AUROC was not measured below the top rung.
+- Table 4's HapMap3+ and all-SNP rows differ in GWAS size as well as SNP count (215,872 against 34,690 people). Only
+  the random-subset rows hold the GWAS fixed. No C+T score was built from the cohort's own HapMap3+ GWAS, which would
+  hold the people fixed.
+- DeepGP's in-GWAS AUROCs for the model trained to completion come from the training log (averages over batches of
+  64). Its genotype files were deleted on 21 November, so the whole parts cannot be re-scored.
 - Classic DeepGP's training AUROCs on the ladder were not recorded, only its tuning checks.
 - The reason given for classic DeepGP's deficit on the ladder is our reading. It is not tested: the network leans on
   SNPs whose GWAS included its own training people, and so under-uses the covariates.

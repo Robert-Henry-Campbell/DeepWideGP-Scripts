@@ -1,0 +1,10 @@
+run,gwas_people,snps_in_gwas,lead_snps,validation_part,test,prs_overweighting
+PRS + covariates,215872,1258200,47341,0.9305,0.6547,5.4800
+PRS alone,215872,1258200,47341,0.9155,0.6019,
+PRS + covariates,34690,7813490,98440,0.9947,0.6594,11.8000
+PRS alone,34690,7813490,98440,0.9828,0.5780,
+"PRS + covariates, random 5% of the lead SNPs",34690,7813490,4932,0.9019,0.6210,11.4800
+"PRS + covariates, random 10% of the lead SNPs",34690,7813490,9718,0.9457,0.6283,12.4400
+"PRS + covariates, random 25% of the lead SNPs",34690,7813490,24963,0.9793,0.6424,11.3200
+"PRS + covariates, random 50% of the lead SNPs",34690,7813490,49058,0.9901,0.6532,11.9700
+"PRS + covariates, random 75% of the lead SNPs",34690,7813490,73824,0.9938,0.6571,12.0800

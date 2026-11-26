@@ -1,14 +1,14 @@
 gwas_people,model,training_part,validation_part,new_people,prs_overweighting,covariate_share_recipe,covariate_share_new_people
-34690,C+T PRS alone,0.9839,,0.5780,,,
+34690,C+T PRS alone,0.9840,0.9828,0.5780,,,
 34690,"C+T PRS + covariates, paper's recipe",0.9946,0.9947,0.6594,11.8000,0.2750,0.8260
 34690,LDpred2-auto alone,0.9497,0.9497,0.6206,,,
 34690,"LDpred2-auto + covariates, recipe",0.9696,0.9707,0.6864,5.7700,0.2090,0.6720
 34690,lassosum2 alone,0.9990,0.9990,0.5629,,,
 34690,"lassosum2 + covariates, recipe",1.0000,1.0000,0.6569,,,
-34690,"DeepGP, risk allele, first check (300 batches)",0.9921,0.9894,0.6494,,,
-34690,"DeepGP, risk allele, model kept (pass 15 of 25)",0.9950,0.9920,0.6477,,,
+34690,"DeepGP, risk allele, after one pass",0.9926,0.9902,0.6463,,,
+34690,"DeepGP, risk allele, trained to completion (pass 15 of 25 kept)",0.9950,0.9920,0.6477,,,
 34690,Covariates alone,0.6524,0.6587,0.6776,,,
-215872,C+T PRS alone,0.9172,,0.6019,,,
+215872,C+T PRS alone,0.9176,0.9155,0.6019,,,
 215872,"C+T PRS + covariates, paper's recipe",0.9311,0.9305,0.6547,5.4800,0.1210,0.7340
 215872,"DeepGP, risk allele, first pass",0.9230,0.9260,0.6492,,,
 215872,"DeepGP, risk allele, model kept",,,0.6521,,,

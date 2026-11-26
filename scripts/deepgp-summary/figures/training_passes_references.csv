@@ -1,0 +1,3 @@
+reference,test_auroc
+Covariates alone,0.6774
+PRS + cov,0.6551
