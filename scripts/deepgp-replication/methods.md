@@ -31,6 +31,17 @@ people only, all 7,813,490 imputed SNPs. Clumping as the paper: p <= 0.05, r² 0
 SNPs from (1) and 98,440 from (2) (the paper: about 100,000 from 13.3 million). Both GWAS include the code's
 validation people, as the paper's did.
 
+**Leakage check (added 27 Nov 2026, running).**
+- **What we saw.** With GWAS (2), the code's validation AUROC was 0.99 from its first check, against 0.648 on the test
+  people.
+- **Two explanations.** Robert's supervisor suspects data leakage. Robert's explanation: the GWAS that picked the SNPs,
+  and each SNP's risk allele, included the code's validation people. A network that largely re-learns the GWAS's linear
+  signal then scores those people almost perfectly.
+- **The test.** GWAS (2) is refitted on the code's training part only (29,486 people, leaving out its 5,204 validation
+  people), and everything else is repeated unchanged. If validation falls to the test level, the gap came from the
+  shared GWAS, not from a leak elsewhere.
+- **Where.** Design and results in `runs/deepgp_replication_e11_trainonly_gwas`.
+
 **Dosages.** Minor-allele dosages, as the paper states, or risk-allele dosages: each SNP counts the allele whose log
 odds ratio in the GWAS that selected it is above 0. After the code's own per-SNP standardisation this flips the sign
 of about half the SNPs and changes nothing else.
