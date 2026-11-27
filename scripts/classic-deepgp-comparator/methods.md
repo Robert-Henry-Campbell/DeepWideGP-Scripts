@@ -220,6 +220,10 @@ and sat at the covariate floor.
   code. Why T2D: it is the only configuration the authors published, and the replication reached the paper's DeepGP
   level with it on our data (0.648-0.652 against 0.64). One setting for all diseases is the little-selection figure
   of CLAUDE.md section 6.
+  - **Sensitivity check (27 November 2026).** We tested the sensitivity of the T2D replication to hyperparameters by
+    rerunning it with the published settings of five other diseases (MI, heart failure, CVD, stroke and CAD; Supp.
+    Table 7), excluding atrial fibrillation and atherosclerosis, whose settings would not fit in our GPUs. Results
+    pending (`runs/deepgp_hparam_check` in the master repo).
 - **Code.** DeepWideGP `main_genome.py`, the published training script, lightly edited (commit 50f0ae6, frozen in
   `runs/classic_deepgp_ladder/code_50f0ae6`):
   - the published test scoring is commented out; the best model scores the tuning set instead;
